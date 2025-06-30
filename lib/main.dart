@@ -11,6 +11,7 @@ void main() async {
     backgroundColor: Colors.transparent,
     skipTaskbar: false,
     titleBarStyle: TitleBarStyle.hidden,
+    center: true
   );
 
   runApp(const MyApp());
