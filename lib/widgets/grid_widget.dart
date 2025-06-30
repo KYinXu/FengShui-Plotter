@@ -13,61 +13,59 @@ class GridWidget extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
-    final gridCellColor = colorScheme.surfaceContainerHighest;
+    final gridCellColor = colorScheme.surfaceVariant;
     final gridBorderColor = colorScheme.outline;
     final majorGridBorderColor = colorScheme.onSurface;
 
-    return Expanded(
-      child: LayoutBuilder(
-        builder: (context, constraints) {
-          final double availableWidth = constraints.maxWidth;
-          final double gridHeight = (availableWidth / grid.width) * grid.length;
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final double availableWidth = constraints.maxWidth;
+        final double gridHeight = (availableWidth / grid.width) * grid.length;
 
-          final gridView = GridView.builder(
-            physics: const NeverScrollableScrollPhysics(),
-            gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-              crossAxisCount: grid.width,
-              childAspectRatio: 1.0, // Square cells
-              mainAxisSpacing: 0,
-              crossAxisSpacing: 0,
-            ),
-            itemCount: grid.totalCells,
-            itemBuilder: (context, index) {
-              int row = index ~/ grid.width;
-              int col = index % grid.width;
+        final gridView = GridView.builder(
+          physics: const NeverScrollableScrollPhysics(),
+          gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+            crossAxisCount: grid.width,
+            childAspectRatio: 1.0, // Square cells
+            mainAxisSpacing: 0,
+            crossAxisSpacing: 0,
+          ),
+          itemCount: grid.totalCells,
+          itemBuilder: (context, index) {
+            int row = index ~/ grid.width;
+            int col = index % grid.width;
 
-              return CustomPaint(
-                painter: CellPainter(
-                  row: row,
-                  col: col,
-                  grid: grid,
-                  gridCellColor: gridCellColor,
-                  gridBorderColor: gridBorderColor,
-                  majorGridBorderColor: majorGridBorderColor,
-                ),
-              );
-            },
-          );
-
-          final gridContainer = SizedBox(
-            width: availableWidth,
-            height: gridHeight,
-            child: gridView,
-          );
-
-          if (gridHeight < constraints.maxHeight) {
-            // If the grid is smaller than the container, center it.
-            return Center(
-              child: gridContainer,
+            return CustomPaint(
+              painter: CellPainter(
+                row: row,
+                col: col,
+                grid: grid,
+                gridCellColor: gridCellColor,
+                gridBorderColor: gridBorderColor,
+                majorGridBorderColor: majorGridBorderColor,
+              ),
             );
-          }
+          },
+        );
 
-          // If the grid is larger, make it scrollable.
-          return SingleChildScrollView(
+        final gridContainer = SizedBox(
+          width: availableWidth,
+          height: gridHeight,
+          child: gridView,
+        );
+
+        if (gridHeight < constraints.maxHeight) {
+          // If the grid is smaller than the container, center it.
+          return Center(
             child: gridContainer,
           );
-        },
-      ),
+        }
+
+        // If the grid is larger, make it scrollable.
+        return SingleChildScrollView(
+          child: gridContainer,
+        );
+      },
     );
   }
 }

@@ -1,3 +1,4 @@
+import 'package:feng_shui_plotter/widgets/confirmation_dialog.dart';
 import 'package:flutter/material.dart';
 import 'package:window_manager/window_manager.dart';
 import '../constants/app_constants.dart';
@@ -27,9 +28,24 @@ class _HomeScreenState extends State<HomeScreen> {
       body: Column(
         children: [
           const CustomTitleBar(),
-          GridInputForm(onGridCreated: _onGridCreated),
-          const SizedBox(height: AppConstants.defaultSpacing),
-          if (_currentGrid != null) GridWidget(grid: _currentGrid!),
+          Padding(
+            padding: const EdgeInsets.all(AppConstants.defaultPadding),
+            child: GridInputForm(onGridCreated: _onGridCreated),
+          ),
+          if (_currentGrid != null)
+            Expanded(
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(
+                  AppConstants.defaultPadding,
+                  0,
+                  AppConstants.defaultPadding,
+                  AppConstants.defaultPadding,
+                ),
+                child: GridWidget(grid: _currentGrid!),
+              ),
+            )
+          else
+            const Expanded(child: SizedBox()),
         ],
       ),
     );
@@ -48,29 +64,51 @@ class CustomTitleBar extends StatelessWidget {
       child: Container(
         height: 40,
         color: Colors.transparent,
-        child: Row(
+        child: Stack(
           children: [
-            const Expanded(
-              child: Padding(
-                padding: EdgeInsets.only(left: 12.0),
-                child: Text(
-                  AppConstants.appTitle,
-                  style: TextStyle(
+            const Center(
+              child: Text(
+                AppConstants.appTitle,
+                style: TextStyle(
                     fontWeight: FontWeight.bold,
                     color: Colors.white,
-                  ),
-                ),
+                    fontFamily: 'Barriecito'),
               ),
             ),
-            IconButton(
-              icon: const Icon(Icons.minimize, color: Colors.white),
-              onPressed: () => windowManager.minimize(),
-              tooltip: 'Minimize',
-            ),
-            IconButton(
-              icon: const Icon(Icons.close, color: Colors.white),
-              onPressed: () => windowManager.close(),
-              tooltip: 'Close',
+            Row(
+              mainAxisAlignment: MainAxisAlignment.end,
+              children: [
+                IconButton(
+                  alignment: Alignment.topRight,
+                  icon: const Icon(Icons.minimize, color: Colors.white),
+                  onPressed: () => windowManager.minimize(),
+                  tooltip: 'Minimize',
+                ),
+                IconButton(
+                  icon: const Icon(Icons.close, color: Colors.white),
+                  onPressed: () {
+                    showConfirmationDialog(
+                      context: context,
+                      title: 'Confirm Quit',
+                      content: const Text('Are you sure you want to quit?'),
+                      actions: [
+                        TextButton(
+                          onPressed: () => Navigator.of(context).pop(false),
+                          child: const Text('No'),
+                        ),
+                        TextButton(
+                          onPressed: () {
+                            Navigator.of(context).pop(true);
+                            windowManager.close();
+                          },
+                          child: const Text('Yes'),
+                        ),
+                      ],
+                    );
+                  },
+                  tooltip: 'Close',
+                ),
+              ],
             ),
           ],
         ),
