@@ -29,8 +29,8 @@ class _GridInputFormState extends State<GridInputForm> {
   void _submit() {
     if (_formKey.currentState!.validate()) {
       final grid = Grid(
-        length: int.parse(_lengthController.text),
-        width: int.parse(_widthController.text),
+        lengthInches: double.parse(_lengthController.text),
+        widthInches: double.parse(_widthController.text),
       );
       widget.onGridCreated(grid);
     }
@@ -42,12 +42,12 @@ class _GridInputFormState extends State<GridInputForm> {
           ? AppConstants.enterLengthError 
           : AppConstants.enterWidthError;
     }
-    final n = int.tryParse(value);
-    if (n == null || n < AppConstants.minGridSize) {
+    final n = double.tryParse(value);
+    if (n == null || n <= 0) {
       return AppConstants.positiveIntegerError;
     }
-    if (n > AppConstants.maxGridSize) {
-      return 'Maximum size is ${AppConstants.maxGridSize}';
+    if (n > AppConstants.maxGridSize * 12) {
+      return 'Maximum size is ${AppConstants.maxGridSize * 12} inches';
     }
     return null;
   }
@@ -65,7 +65,7 @@ class _GridInputFormState extends State<GridInputForm> {
                 labelText: AppConstants.lengthLabel,
                 border: OutlineInputBorder(),
               ),
-              keyboardType: TextInputType.number,
+              keyboardType: const TextInputType.numberWithOptions(decimal: true),
               validator: (value) => _validateDimension(value, 'length'),
             ),
           ),
@@ -77,7 +77,7 @@ class _GridInputFormState extends State<GridInputForm> {
                 labelText: AppConstants.widthLabel,
                 border: OutlineInputBorder(),
               ),
-              keyboardType: TextInputType.number,
+              keyboardType: const TextInputType.numberWithOptions(decimal: true),
               validator: (value) => _validateDimension(value, 'width'),
             ),
           ),

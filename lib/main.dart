@@ -8,14 +8,14 @@ void main() async {
   await windowManager.ensureInitialized();
 
   WindowOptions windowOptions = const WindowOptions(
-    size: Size(600, 800),
-    center: true,
     backgroundColor: Colors.transparent,
     skipTaskbar: false,
     titleBarStyle: TitleBarStyle.hidden,
   );
 
   windowManager.waitUntilReadyToShow(windowOptions, () async {
+    await windowManager.setBounds(const Size(800, 600));
+    await windowManager.center();
     await windowManager.show();
     await windowManager.focus();
   });
@@ -25,15 +25,18 @@ void main() async {
 
 class MyApp extends StatelessWidget {
   const MyApp({super.key});
+  final Color seed = const Color.fromARGB(255, 248, 207, 226);
 
   @override
   Widget build(BuildContext context) {
+    final colorScheme = ColorScheme.fromSeed(seedColor: seed);
     return MaterialApp(
       debugShowCheckedModeBanner: false,
       title: AppConstants.appTitle,
       theme: ThemeData(
-        colorScheme: ColorScheme.fromSeed(seedColor: AppConstants.primaryColor),
+        colorScheme: colorScheme,
         useMaterial3: true,
+        scaffoldBackgroundColor: AppConstants.bgColor,
       ),
       home: const HomeScreen(),
     );

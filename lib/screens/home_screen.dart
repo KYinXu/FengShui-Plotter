@@ -24,14 +24,10 @@ class _HomeScreenState extends State<HomeScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: Colors.white,
       body: Column(
         children: [
           const CustomTitleBar(),
-          Padding(
-            padding: const EdgeInsets.all(AppConstants.defaultPadding),
-            child: GridInputForm(onGridCreated: _onGridCreated),
-          ),
+          GridInputForm(onGridCreated: _onGridCreated),
           const SizedBox(height: AppConstants.defaultSpacing),
           if (_currentGrid != null) GridWidget(grid: _currentGrid!),
         ],
@@ -51,7 +47,7 @@ class CustomTitleBar extends StatelessWidget {
       },
       child: Container(
         height: 40,
-        color: Theme.of(context).colorScheme.inversePrimary,
+        color: Colors.transparent,
         child: Row(
           children: [
             const Expanded(
