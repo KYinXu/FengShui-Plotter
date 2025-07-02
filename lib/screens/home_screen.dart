@@ -6,6 +6,7 @@ import '../models/grid_model.dart';
 import '../widgets/grid_input_form.dart';
 import '../widgets/grid_widget.dart';
 import 'package:flutter/gestures.dart';
+import '../widgets/object_palette.dart';
 
 const int kMiddleMouseButton = 0x04;
 
@@ -39,7 +40,8 @@ class _HomeScreenState extends State<HomeScreen> {
               padding: const EdgeInsets.all(AppConstants.defaultPadding),
               child: GridInputForm(onGridCreated: _onGridCreated),
             ),
-            if (_currentGrid != null)
+            if (_currentGrid != null) ...[
+              const ObjectPalette(),
               Expanded(
                 child: Padding(
                   padding: const EdgeInsets.fromLTRB(
@@ -103,8 +105,8 @@ class _HomeScreenState extends State<HomeScreen> {
                     ],
                   ),
                 ),
-              )
-            else
+              ),
+            ] else
               const Expanded(child: SizedBox()),
             if (_currentGrid != null)
               Padding(
