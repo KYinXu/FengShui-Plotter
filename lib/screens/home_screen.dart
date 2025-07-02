@@ -5,6 +5,9 @@ import '../constants/app_constants.dart';
 import '../models/grid_model.dart';
 import '../widgets/grid_input_form.dart';
 import '../widgets/grid_widget.dart';
+import 'package:flutter/gestures.dart';
+
+const int kMiddleMouseButton = 0x04;
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -16,6 +19,8 @@ class HomeScreen extends StatefulWidget {
 class _HomeScreenState extends State<HomeScreen> {
   Grid? _currentGrid;
   double _rotationZ = -0.7; // Initial Y rotation for the grid
+  bool _isMiddleMouseDown = false;
+  double _lastPointerX = 0.0;
 
   void _onGridCreated(Grid grid) {
     setState(() {
@@ -45,13 +50,37 @@ class _HomeScreenState extends State<HomeScreen> {
                   ),
                   child: Stack(
                     children: [
-                      Container(
-                        decoration: BoxDecoration(
-                          color: Theme.of(context).colorScheme.primary,
-                          borderRadius: BorderRadius.circular(12),
+                      Listener(
+                        onPointerDown: (event) {
+                          if (event.kind == PointerDeviceKind.mouse && event.buttons == kMiddleMouseButton) {
+                            _isMiddleMouseDown = true;
+                            _lastPointerX = event.position.dx;
+                          }
+                        },
+                        onPointerMove: (event) {
+                          if (_isMiddleMouseDown) {
+                            final dx = event.position.dx - _lastPointerX;
+                            _lastPointerX = event.position.dx;
+                            setState(() {
+                              _rotationZ = _rotationZ + dx * 0.01;
+                              if (_rotationZ < -1.5) _rotationZ = -1.5;
+                              if (_rotationZ > 1.5) _rotationZ = 1.5;
+                            });
+                          }
+                        },
+                        onPointerUp: (event) {
+                          if (event.kind == PointerDeviceKind.mouse && event.buttons == 0) {
+                            _isMiddleMouseDown = false;
+                          }
+                        },
+                        child: Container(
+                          decoration: BoxDecoration(
+                            color: Theme.of(context).colorScheme.primary,
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                          padding: const EdgeInsets.all(12),
+                          child: GridWidget(grid: _currentGrid!, rotationZ: _rotationZ),
                         ),
-                        padding: const EdgeInsets.all(12),
-                        child: GridWidget(grid: _currentGrid!, rotationZ: _rotationZ),
                       ),
                       Positioned(
                         top: 12,
@@ -64,6 +93,8 @@ class _HomeScreenState extends State<HomeScreen> {
                             onPressed: () {
                               setState(() {
                                 _rotationZ = -0.7;
+                                if (_rotationZ < -1.5) _rotationZ = -1.5;
+                                if (_rotationZ > 1.5) _rotationZ = 1.5;
                               });
                             },
                           ),
