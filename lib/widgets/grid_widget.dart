@@ -236,8 +236,8 @@ class GridAreaPainter extends CustomPainter {
 
     // Paint for faint inch dividers
     final inchDividerPaint = Paint()
-      ..color = const Color(0x88D72660) // semi-transparent darker pink
-      ..strokeWidth = 0.7;
+      ..color = AppConstants.inchDividerColor(const Color(0x88D72660))
+      ..strokeWidth = AppConstants.gridInchDividerWidth;
 
     int rows = grid.length;
     int cols = grid.width;
@@ -284,8 +284,8 @@ class GridAreaPainter extends CustomPainter {
 
     // Draw thin borders
     final bolderThickPaint = Paint()
-      ..color = const Color(0xFFFF4F9A) // bright pink
-      ..strokeWidth = 5.0;
+      ..color = AppConstants.gridPink
+      ..strokeWidth = AppConstants.gridMajorLineWidth;
 
     // Draw major (foot) grid lines from the top-left corner (0,0)
     Set<double> yLines = {};
@@ -313,8 +313,8 @@ class GridAreaPainter extends CustomPainter {
 
     // Draw a single outline around the entire grid
     final outlinePaint = Paint()
-      ..color = const Color(0xFFFF4F9A) // bright pink
-      ..strokeWidth = 3.0
+      ..color = AppConstants.gridPink
+      ..strokeWidth = AppConstants.gridOutlineWidth
       ..style = PaintingStyle.stroke;
     canvas.drawRect(
       Rect.fromLTWH(0, 0, cellInchSize * totalColsInches, cellInchSize * totalRowsInches),

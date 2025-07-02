@@ -27,4 +27,16 @@ static const Color bgColor = Color.fromARGB(255, 255, 186, 215);
   // Validation
   static const int minGridSize = 1;
   static const int maxGridSize = 50;
+
+  // Grid style constants
+  static const double gridInchDividerOpacity = 0.5;
+  static const double gridInchDividerWidth = 0.7;
+  static const double gridMajorLineWidth = 5.0;
+  static const double gridOutlineWidth = 3.0;
+
+  // Main grid pink color (for outline and foot dividers)
+  static const Color gridPink = bgColor;
+
+  // Helper for semi-transparent inch divider color
+  static Color inchDividerColor(Color base) => base.withAlpha((gridInchDividerOpacity * 255).round());
 } 
