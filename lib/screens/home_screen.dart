@@ -43,13 +43,33 @@ class _HomeScreenState extends State<HomeScreen> {
                     AppConstants.defaultPadding,
                     AppConstants.defaultPadding,
                   ),
-                  child: Container(
-                    decoration: BoxDecoration(
-                      color: Theme.of(context).colorScheme.primary,
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                    padding: const EdgeInsets.all(12),
-                    child: GridWidget(grid: _currentGrid!, rotationZ: _rotationZ),
+                  child: Stack(
+                    children: [
+                      Container(
+                        decoration: BoxDecoration(
+                          color: Theme.of(context).colorScheme.primary,
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        padding: const EdgeInsets.all(12),
+                        child: GridWidget(grid: _currentGrid!, rotationZ: _rotationZ),
+                      ),
+                      Positioned(
+                        top: 12,
+                        right: 12,
+                        child: Material(
+                          color: Colors.transparent,
+                          child: IconButton(
+                            icon: const Icon(Icons.refresh, color: Colors.white),
+                            tooltip: 'Reset Rotation',
+                            onPressed: () {
+                              setState(() {
+                                _rotationZ = -0.7;
+                              });
+                            },
+                          ),
+                        ),
+                      ),
+                    ],
                   ),
                 ),
               )
