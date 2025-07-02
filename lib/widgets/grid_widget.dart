@@ -236,7 +236,7 @@ class GridAreaPainter extends CustomPainter {
 
     // Paint for faint inch dividers
     final inchDividerPaint = Paint()
-      ..color = Colors.white
+      ..color = const Color(0x88D72660) // semi-transparent darker pink
       ..strokeWidth = 0.7;
 
     int rows = grid.length;
@@ -282,71 +282,38 @@ class GridAreaPainter extends CustomPainter {
       }
     }
 
-    // Draw thin borders (make them more visible)
-    final visibleThinPaint = Paint()
-      ..color = Colors.white
-      ..strokeWidth = 2.2;
-
-    // Draw major grid lines (make them bolder)
+    // Draw thin borders
     final bolderThickPaint = Paint()
-      ..color = Colors.white
+      ..color = const Color(0xFFFF4F9A) // bright pink
       ..strokeWidth = 5.0;
 
-    // Draw thin borders
-    for (int row = 0; row < rows; row++) {
-      for (int col = 0; col < cols; col++) {
-        double w = (col == cols - 1) ? lastColInches * cellInchSize : 12.0 * cellInchSize;
-        double h = (row == rows - 1) ? lastRowInches * cellInchSize : 12.0 * cellInchSize;
-        double x = 0;
-        for (int c = 0; c < col; c++) {
-          x += (c == cols - 2 && lastColPartial > 0) ? lastColInches * cellInchSize : 12.0 * cellInchSize;
-        }
-        double y = 0;
-        for (int r = 0; r < row; r++) {
-          y += (r == rows - 2 && lastRowPartial > 0) ? lastRowInches * cellInchSize : 12.0 * cellInchSize;
-        }
-        // Top (only for first row, but skip if outline will cover it)
-        if (row != 0) {
-          canvas.drawLine(Offset(x, y), Offset(x + w, y), visibleThinPaint);
-        }
-        // Left (only for first column, but skip if outline will cover it)
-        if (col != 0) {
-          canvas.drawLine(Offset(x, y), Offset(x, y + h), visibleThinPaint);
-        }
-        // Bottom (only for last row, but skip if outline will cover it)
-        if (row != rows - 1) {
-          canvas.drawLine(Offset(x, y + h), Offset(x + w, y + h), visibleThinPaint);
-        }
-        // Right (only for last column, but skip if outline will cover it)
-        if (col != cols - 1) {
-          canvas.drawLine(Offset(x + w, y), Offset(x + w, y + h), visibleThinPaint);
-        }
+    // Draw major (foot) grid lines from the top-left corner (0,0)
+    Set<double> yLines = {};
+    for (double y = 0; y <= gridHeight + 0.1; y += 12 * cellInchSize) {
+      yLines.add(y);
+      canvas.drawLine(Offset(0, y), Offset(gridWidth, y), bolderThickPaint);
+    }
+    if ((gridHeight / cellInchSize) % 12 != 0) {
+      double y = gridHeight;
+      if (!yLines.contains(y)) {
+        canvas.drawLine(Offset(0, y), Offset(gridWidth, y), bolderThickPaint);
       }
     }
-
-    // Draw major grid lines
-    // Horizontal
-    for (int row = 0; row <= rows; row++) {
-      if (row % 12 == 0) {
-        double y = row * cellInchSize;
-        double w = cellInchSize * (cols - 1) + (lastColInches > 0 ? cellInchSize * lastColInches : cellInchSize);
-        if (row == rows && lastRowInches > 0) y = (rows - 1) * cellInchSize + cellInchSize * lastRowInches;
-        canvas.drawLine(Offset(0, y), Offset(w, y), bolderThickPaint);
-      }
+    Set<double> xLines = {};
+    for (double x = 0; x <= gridWidth + 0.1; x += 12 * cellInchSize) {
+      xLines.add(x);
+      canvas.drawLine(Offset(x, 0), Offset(x, gridHeight), bolderThickPaint);
     }
-    // Vertical
-    for (int col = 0; col <= cols; col++) {
-      if (col % 12 == 0) {
-        double x = col * cellInchSize;
-        double h = cellInchSize * (rows - 1) + (lastRowInches > 0 ? cellInchSize * lastRowInches : cellInchSize);
-        if (col == cols && lastColInches > 0) x = (cols - 1) * cellInchSize + cellInchSize * lastColInches;
-        canvas.drawLine(Offset(x, 0), Offset(x, h), bolderThickPaint);
+    if ((gridWidth / cellInchSize) % 12 != 0) {
+      double x = gridWidth;
+      if (!xLines.contains(x)) {
+        canvas.drawLine(Offset(x, 0), Offset(x, gridHeight), bolderThickPaint);
       }
     }
 
     // Draw a single outline around the entire grid
     final outlinePaint = Paint()
-      ..color = Colors.white
+      ..color = const Color(0xFFFF4F9A) // bright pink
       ..strokeWidth = 3.0
       ..style = PaintingStyle.stroke;
     canvas.drawRect(
