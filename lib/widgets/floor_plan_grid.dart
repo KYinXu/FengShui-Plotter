@@ -1,6 +1,4 @@
 import 'package:flutter/material.dart';
-import '../constants/app_constants.dart';
-import '../models/grid_model.dart';
 
 class FloorPlan extends StatelessWidget {
   const FloorPlan({super.key});

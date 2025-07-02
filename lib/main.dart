@@ -6,6 +6,7 @@ import 'screens/home_screen.dart';
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await windowManager.ensureInitialized();
+  await windowManager.center();
 
   const WindowOptions(
     backgroundColor: Colors.transparent,
