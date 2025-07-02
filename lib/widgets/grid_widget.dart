@@ -252,49 +252,17 @@ class GridAreaPainter extends CustomPainter {
     double totalColsInches = (cols - 1) * 12.0 + (lastColPartial > 0 ? lastColPartial * 12.0 : 12.0);
     double totalRowsInches = (rows - 1) * 12.0 + (lastRowPartial > 0 ? lastRowPartial * 12.0 : 12.0);
 
-    // Draw faint inch dividers (vertical, within each cell)
-    for (int row = 0; row < rows; row++) {
-      double h = (row == rows - 1) ? lastRowInches * cellInchSize : 12.0 * cellInchSize;
-      double y = 0;
-      for (int r = 0; r < row; r++) {
-        y += (r == rows - 2 && lastRowPartial > 0) ? lastRowInches * cellInchSize : 12.0 * cellInchSize;
-      }
-      for (int col = 0; col < cols; col++) {
-        double w = (col == cols - 1) ? lastColInches * cellInchSize : 12.0 * cellInchSize;
-        double x = 0;
-        for (int c = 0; c < col; c++) {
-          x += (c == cols - 2 && lastColPartial > 0) ? lastColInches * cellInchSize : 12.0 * cellInchSize;
-        }
-        int verticalDividers = (col == cols - 1) ? lastColInches.floor() : 12;
-        for (int i = 1; i < verticalDividers; i++) {
-          double inchX = x + i * (cellInchSize);
-          if (inchX < x + w - 0.1) {
-            canvas.drawLine(Offset(inchX, y), Offset(inchX, y + h), inchDividerPaint);
-          }
-        }
-      }
+    // Draw global inch dividers (vertical)
+    int totalInchesX = ((cols - 1) * 12 + (lastColPartial > 0 ? lastColPartial * 12 : 12)).round();
+    int totalInchesY = ((rows - 1) * 12 + (lastRowPartial > 0 ? lastRowPartial * 12 : 12)).round();
+    for (int i = 1; i < totalInchesX; i++) {
+      double x = i * cellInchSize;
+      canvas.drawLine(Offset(x, 0), Offset(x, gridHeight), inchDividerPaint);
     }
-    // Draw faint inch dividers (horizontal, within each cell)
-    for (int col = 0; col < cols; col++) {
-      double w = (col == cols - 1) ? lastColInches * cellInchSize : 12.0 * cellInchSize;
-      double x = 0;
-      for (int c = 0; c < col; c++) {
-        x += (c == cols - 2 && lastColPartial > 0) ? lastColInches * cellInchSize : 12.0 * cellInchSize;
-      }
-      for (int row = 0; row < rows; row++) {
-        double h = (row == rows - 1) ? lastRowInches * cellInchSize : 12.0 * cellInchSize;
-        double y = 0;
-        for (int r = 0; r < row; r++) {
-          y += (r == rows - 2 && lastRowPartial > 0) ? lastRowInches * cellInchSize : 12.0 * cellInchSize;
-        }
-        int horizontalDividers = (row == rows - 1) ? lastRowInches.floor() : 12;
-        for (int i = 1; i < horizontalDividers; i++) {
-          double inchY = y + i * (cellInchSize);
-          if (inchY < y + h - 0.1) {
-            canvas.drawLine(Offset(x, inchY), Offset(x + w, inchY), inchDividerPaint);
-          }
-        }
-      }
+    // Draw global inch dividers (horizontal)
+    for (int i = 1; i < totalInchesY; i++) {
+      double y = i * cellInchSize;
+      canvas.drawLine(Offset(0, y), Offset(gridWidth, y), inchDividerPaint);
     }
 
     // Draw cells (backgrounds)
@@ -337,20 +305,20 @@ class GridAreaPainter extends CustomPainter {
         for (int r = 0; r < row; r++) {
           y += (r == rows - 2 && lastRowPartial > 0) ? lastRowInches * cellInchSize : 12.0 * cellInchSize;
         }
-        // Top (only for first row)
-        if (row == 0) {
+        // Top (only for first row, but skip if outline will cover it)
+        if (row != 0) {
           canvas.drawLine(Offset(x, y), Offset(x + w, y), visibleThinPaint);
         }
-        // Left (only for first column)
-        if (col == 0) {
+        // Left (only for first column, but skip if outline will cover it)
+        if (col != 0) {
           canvas.drawLine(Offset(x, y), Offset(x, y + h), visibleThinPaint);
         }
-        // Bottom (only for last row)
-        if (row == rows - 1) {
+        // Bottom (only for last row, but skip if outline will cover it)
+        if (row != rows - 1) {
           canvas.drawLine(Offset(x, y + h), Offset(x + w, y + h), visibleThinPaint);
         }
-        // Right (only for last column)
-        if (col == cols - 1) {
+        // Right (only for last column, but skip if outline will cover it)
+        if (col != cols - 1) {
           canvas.drawLine(Offset(x + w, y), Offset(x + w, y + h), visibleThinPaint);
         }
       }
