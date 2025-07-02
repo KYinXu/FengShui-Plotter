@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'object_item.dart';
 
 class ObjectPalette extends StatelessWidget {
   const ObjectPalette({super.key});
@@ -11,11 +12,9 @@ class ObjectPalette extends StatelessWidget {
         scrollDirection: Axis.horizontal,
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
         children: const [
-          Center(
-            child: Text(
-              'No objects available yet',
-              style: TextStyle(color: Colors.grey, fontStyle: FontStyle.italic),
-            ),
+          ObjectItem(
+            label: 'Bed',
+            icon: Icons.bed,
           ),
         ],
       ),
