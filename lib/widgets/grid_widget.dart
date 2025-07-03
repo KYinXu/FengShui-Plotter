@@ -3,7 +3,7 @@ import '../constants/app_constants.dart';
 import '../models/grid_model.dart';
 import 'package:vector_math/vector_math_64.dart' as vm;
 
-class GridWidget extends StatelessWidget {
+class GridWidget extends StatefulWidget {
   final Grid grid;
   final double rotationZ;
   final List<GridObject> objects;
@@ -18,6 +18,23 @@ class GridWidget extends StatelessWidget {
   });
 
   @override
+  State<GridWidget> createState() => _GridWidgetState();
+}
+
+class _GridWidgetState extends State<GridWidget> {
+  Offset? _previewCell;
+  String? _previewType;
+  IconData? _previewIcon;
+
+  void _updatePreview(Offset? cell, String? type, IconData? icon) {
+    setState(() {
+      _previewCell = cell;
+      _previewType = type;
+      _previewIcon = icon;
+    });
+  }
+
+  @override
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
     final gridCellColor = Colors.transparent;
@@ -28,10 +45,10 @@ class GridWidget extends StatelessWidget {
       builder: (context, constraints) {
         final double availableWidth = constraints.maxWidth;
         // Calculate the true visible width and height, accounting for partial cells
-        int fullCols = grid.width - 1;
-        int fullRows = grid.length - 1;
-        double lastColInches = grid.widthPartialPercentage > 0 ? grid.widthPartialPercentage * 12.0 : 12.0;
-        double lastRowInches = grid.lengthPartialPercentage > 0 ? grid.lengthPartialPercentage * 12.0 : 12.0;
+        int fullCols = widget.grid.width - 1;
+        int fullRows = widget.grid.length - 1;
+        double lastColInches = widget.grid.widthPartialPercentage > 0 ? widget.grid.widthPartialPercentage * 12.0 : 12.0;
+        double lastRowInches = widget.grid.lengthPartialPercentage > 0 ? widget.grid.lengthPartialPercentage * 12.0 : 12.0;
         double totalColsInches = fullCols * 12.0 + lastColInches;
         double totalRowsInches = fullRows * 12.0 + lastRowInches;
         final double cellInchSize = availableWidth / totalColsInches;
@@ -45,46 +62,72 @@ class GridWidget extends StatelessWidget {
             final RenderBox box = context.findRenderObject() as RenderBox;
             final Offset local = box.globalToLocal(details.offset);
 
-            // Inverse transform logic
-            final vm.Matrix4 transform = vm.Matrix4.identity()
-              ..translate(gridWidth / 2, gridHeightPx / 2)
-              ..scale(0.7)
-              ..rotateX(1.0)
-              ..rotateZ(rotationZ)
-              ..translate(-gridWidth / 2, -gridHeightPx / 2);
-            final vm.Matrix4? inverse = vm.Matrix4.tryInvert(transform);
-            Offset transformedLocal = local;
-            if (inverse != null) {
-              final vm.Vector3 v = vm.Vector3(local.dx, local.dy, 0);
-              final vm.Vector3 vTransformed = inverse.transform3(v);
-              transformedLocal = Offset(vTransformed.x, vTransformed.y);
-              print('Inverse transformed drop offset: \\${transformedLocal.dx}, \\${transformedLocal.dy}');
-            } else {
+            // Use inverse transform for accurate picking
+            final Offset? gridLocal = _pickGridCell3D(
+              pointer: local,
+              gridWidth: gridWidth,
+              gridHeight: gridHeightPx,
+              cellInchSize: cellInchSize,
+              rotationZ: widget.rotationZ,
+              scale: 0.7,
+              rotateX: 0.0,
+            );
+            if (gridLocal == null) {
               print('Warning: Could not invert transform matrix');
+              return;
             }
-
-            final int col = (transformedLocal.dx / cellInchSize).floor();
-            final int row = (transformedLocal.dy / cellInchSize).floor();
+            int col = (gridLocal.dx / cellInchSize).floor();
+            int row = (gridLocal.dy / cellInchSize).floor();
+            if (details.data['type'].toLowerCase() == 'bed') {
+              col -= 5;
+              row -= 5;
+            }
             final double left = col * cellInchSize;
             final double top = row * cellInchSize;
             final double right = left + cellInchSize;
             final double bottom = top + cellInchSize;
             print('Calculated drop cell: row=\\$row, col=\\$col, bounding box: (left=\\$left, top=\\$top, right=\\$right, bottom=\\$bottom)');
-            if (onObjectDropped != null &&
+            if (widget.onObjectDropped != null &&
                 details.data['type'] is String &&
                 details.data['icon'] is IconData) {
-              onObjectDropped!(row, col, details.data['type'], details.data['icon']);
+              widget.onObjectDropped!(row, col, details.data['type'], details.data['icon']);
             }
+            _updatePreview(null, null, null);
           },
           onMove: (details) {
             print('DragTarget: onMove with data: \\${details.data} at offset: \\${details.offset}');
+            final RenderBox box = context.findRenderObject() as RenderBox;
+            final Offset local = box.globalToLocal(details.offset);
+            final Offset? gridLocal = _pickGridCell3D(
+              pointer: local,
+              gridWidth: gridWidth,
+              gridHeight: gridHeightPx,
+              cellInchSize: cellInchSize,
+              rotationZ: widget.rotationZ,
+              scale: 0.7,
+              rotateX: 0.0,
+            );
+            if (gridLocal != null && details.data['type'] is String && details.data['icon'] is IconData) {
+              int col = (gridLocal.dx / cellInchSize).floor();
+              int row = (gridLocal.dy / cellInchSize).floor();
+              if (details.data['type'].toLowerCase() == 'bed') {
+                col -= 5;
+                row -= 5;
+              }
+              _updatePreview(Offset(col.toDouble(), row.toDouble()), details.data['type'], details.data['icon']);
+            } else {
+              _updatePreview(null, null, null);
+            }
+          },
+          onLeave: (data) {
+            _updatePreview(null, null, null);
           },
           builder: (context, candidateData, rejectedData) {
             return Stack(
               children: [
                 CustomPaint(
                   painter: GridAreaPainter(
-                    grid: grid,
+                    grid: widget.grid,
                     cellInchSize: cellInchSize,
                     gridCellColor: gridCellColor,
                     gridBorderColor: gridBorderColor,
@@ -93,21 +136,44 @@ class GridWidget extends StatelessWidget {
                     gridHeight: gridHeightPx,
                   ),
                 ),
-                ...objects.map((obj) {
+                // Preview overlay
+                if (_previewCell != null && _previewType?.toLowerCase() == 'bed' && _previewIcon != null)
+                  Positioned(
+                    left: _previewCell!.dx * cellInchSize,
+                    top: _previewCell!.dy * cellInchSize,
+                    child: Opacity(
+                      opacity: 0.5,
+                      child: Container(
+                        width: cellInchSize * 12,
+                        height: cellInchSize * 12,
+                        decoration: BoxDecoration(
+                          border: Border.all(color: Colors.green, width: 3),
+                          shape: BoxShape.rectangle,
+                          color: Colors.red.withOpacity(0.2),
+                        ),
+                        child: Icon(_previewIcon, size: cellInchSize * 8, color: Colors.red),
+                      ),
+                    ),
+                  ),
+                // Placed objects
+                ...widget.objects.map((obj) {
                   final double left = obj.col * cellInchSize;
                   final double top = obj.row * cellInchSize;
+                  final bool isBed = obj.type.toLowerCase() == 'bed';
+                  final double objWidth = isBed ? cellInchSize * 12 : cellInchSize;
+                  final double objHeight = isBed ? cellInchSize * 12 : cellInchSize;
                   return Positioned(
                     left: left,
                     top: top,
                     child: Container(
-                      width: cellInchSize,
-                      height: cellInchSize,
+                      width: objWidth,
+                      height: objHeight,
                       decoration: BoxDecoration(
                         border: Border.all(color: Colors.orange, width: 3),
                         shape: BoxShape.rectangle,
                         color: Colors.white.withOpacity(0.8),
                       ),
-                      child: Icon(obj.icon, size: cellInchSize * 0.6, color: Colors.black),
+                      child: Icon(obj.icon, size: objWidth * 0.6, color: Colors.black),
                     ),
                   );
                 }),
@@ -126,9 +192,9 @@ class GridWidget extends StatelessWidget {
 
         final vm.Matrix4 transform = vm.Matrix4.identity()
           ..translate(gridW / 2, gridH / 2)
+          ..rotateZ(widget.rotationZ)
+          ..rotateX(0.0)
           ..scale(0.7)
-          ..rotateX(1.0)
-          ..rotateZ(rotationZ)
           ..translate(-gridW / 2, -gridH / 2);
 
         final transformedGrid = Center(
@@ -156,6 +222,33 @@ class GridWidget extends StatelessWidget {
         );
       },
     );
+  }
+
+  // Helper function for pointer-to-grid mapping using inverse of rendering transform
+  Offset? _pickGridCell3D({
+    required Offset pointer,
+    required double gridWidth,
+    required double gridHeight,
+    required double cellInchSize,
+    required double rotationZ,
+    required double scale,
+    required double rotateX,
+  }) {
+    final vm.Matrix4 transform = vm.Matrix4.identity()
+      ..translate(gridWidth / 2, gridHeight / 2)
+      ..rotateZ(rotationZ)
+      ..rotateX(rotateX)
+      ..scale(scale)
+      ..translate(-gridWidth / 2, -gridHeight / 2);
+    final vm.Matrix4? inverse = vm.Matrix4.tryInvert(transform);
+    print('');
+    print('Pointer: \\${pointer.dx}, \\${pointer.dy}');
+    if (inverse == null) return null;
+    final vm.Vector3 pointer3 = vm.Vector3(pointer.dx, pointer.dy, 0);
+    final vm.Vector3 local3 = inverse.transform3(pointer3);
+    print('Mapped to grid local: \\${local3.x}, \\${local3.y}');
+    print('');
+    return Offset(local3.x, local3.y);
   }
 }
 
