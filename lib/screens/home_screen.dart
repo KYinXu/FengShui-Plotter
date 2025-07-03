@@ -22,10 +22,19 @@ class _HomeScreenState extends State<HomeScreen> {
   double _rotationZ = -0.7; // Initial Y rotation for the grid
   bool _isMiddleMouseDown = false;
   double _lastPointerX = 0.0;
+  List<GridObject> _placedObjects = [];
 
   void _onGridCreated(Grid grid) {
     setState(() {
       _currentGrid = grid;
+      _placedObjects = [];
+    });
+  }
+
+  void _handleObjectDropped(int row, int col, String type, IconData icon) {
+    setState(() {
+      _placedObjects.add(GridObject(type: type, row: row, col: col, icon: icon));
+      print('Placed objects: \\${_placedObjects.map((o) => 'type=\\${o.type}, row=\\${o.row}, col=\\${o.col}').toList()}');
     });
   }
 
@@ -81,7 +90,12 @@ class _HomeScreenState extends State<HomeScreen> {
                             borderRadius: BorderRadius.circular(12),
                           ),
                           padding: const EdgeInsets.all(12),
-                          child: GridWidget(grid: _currentGrid!, rotationZ: _rotationZ),
+                          child: GridWidget(
+                            grid: _currentGrid!,
+                            rotationZ: _rotationZ,
+                            objects: _placedObjects,
+                            onObjectDropped: _handleObjectDropped,
+                          ),
                         ),
                       ),
                       Positioned(

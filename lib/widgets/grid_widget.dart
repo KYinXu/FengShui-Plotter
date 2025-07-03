@@ -1,15 +1,20 @@
 import 'package:flutter/material.dart';
 import '../constants/app_constants.dart';
 import '../models/grid_model.dart';
+import 'package:vector_math/vector_math_64.dart' as vm;
 
 class GridWidget extends StatelessWidget {
   final Grid grid;
   final double rotationZ;
+  final List<GridObject> objects;
+  final void Function(int row, int col, String type, IconData icon)? onObjectDropped;
 
   const GridWidget({
     super.key,
     required this.grid,
     this.rotationZ = -0.7,
+    this.objects = const [],
+    this.onObjectDropped,
   });
 
   @override
@@ -34,31 +39,92 @@ class GridWidget extends StatelessWidget {
 
         final gridWidth = cellInchSize * totalColsInches;
         final gridHeightPx = cellInchSize * totalRowsInches;
-        final gridContainer = SizedBox(
-          width: gridWidth,
-          height: gridHeightPx,
-          child: CustomPaint(
-            painter: GridAreaPainter(
-              grid: grid,
-              cellInchSize: cellInchSize,
-              gridCellColor: gridCellColor,
-              gridBorderColor: gridBorderColor,
-              majorGridBorderColor: majorGridBorderColor,
-              gridWidth: gridWidth,
-              gridHeight: gridHeightPx,
-            ),
-          ),
+        final gridContent = DragTarget<Map<String, dynamic>>(
+          onAcceptWithDetails: (details) {
+            print('DragTarget: onAcceptWithDetails with data: \\${details.data} at offset: \\${details.offset}');
+            final RenderBox box = context.findRenderObject() as RenderBox;
+            final Offset local = box.globalToLocal(details.offset);
+
+            // Inverse transform logic
+            final vm.Matrix4 transform = vm.Matrix4.identity()
+              ..translate(gridWidth / 2, gridHeightPx / 2)
+              ..scale(0.7)
+              ..rotateX(1.0)
+              ..rotateZ(rotationZ)
+              ..translate(-gridWidth / 2, -gridHeightPx / 2);
+            final vm.Matrix4? inverse = vm.Matrix4.tryInvert(transform);
+            Offset transformedLocal = local;
+            if (inverse != null) {
+              final vm.Vector3 v = vm.Vector3(local.dx, local.dy, 0);
+              final vm.Vector3 vTransformed = inverse.transform3(v);
+              transformedLocal = Offset(vTransformed.x, vTransformed.y);
+              print('Inverse transformed drop offset: \\${transformedLocal.dx}, \\${transformedLocal.dy}');
+            } else {
+              print('Warning: Could not invert transform matrix');
+            }
+
+            final int col = (transformedLocal.dx / cellInchSize).floor();
+            final int row = (transformedLocal.dy / cellInchSize).floor();
+            final double left = col * cellInchSize;
+            final double top = row * cellInchSize;
+            final double right = left + cellInchSize;
+            final double bottom = top + cellInchSize;
+            print('Calculated drop cell: row=\\$row, col=\\$col, bounding box: (left=\\$left, top=\\$top, right=\\$right, bottom=\\$bottom)');
+            if (onObjectDropped != null &&
+                details.data['type'] is String &&
+                details.data['icon'] is IconData) {
+              onObjectDropped!(row, col, details.data['type'], details.data['icon']);
+            }
+          },
+          onMove: (details) {
+            print('DragTarget: onMove with data: \\${details.data} at offset: \\${details.offset}');
+          },
+          builder: (context, candidateData, rejectedData) {
+            return Stack(
+              children: [
+                CustomPaint(
+                  painter: GridAreaPainter(
+                    grid: grid,
+                    cellInchSize: cellInchSize,
+                    gridCellColor: gridCellColor,
+                    gridBorderColor: gridBorderColor,
+                    majorGridBorderColor: majorGridBorderColor,
+                    gridWidth: gridWidth,
+                    gridHeight: gridHeightPx,
+                  ),
+                ),
+                ...objects.map((obj) {
+                  final double left = obj.col * cellInchSize;
+                  final double top = obj.row * cellInchSize;
+                  return Positioned(
+                    left: left,
+                    top: top,
+                    child: Container(
+                      width: cellInchSize,
+                      height: cellInchSize,
+                      decoration: BoxDecoration(
+                        border: Border.all(color: Colors.orange, width: 3),
+                        shape: BoxShape.rectangle,
+                        color: Colors.white.withOpacity(0.8),
+                      ),
+                      child: Icon(obj.icon, size: cellInchSize * 0.6, color: Colors.black),
+                    ),
+                  );
+                }),
+              ],
+            );
+          },
         );
 
         // Calculate translation to move the center of the visible grid to the origin
         final double gridW = cellInchSize * totalColsInches;
         final double gridH = cellInchSize * totalRowsInches;
-        final Matrix4 centerMatrix = Matrix4.identity()
+        final vm.Matrix4 centerMatrix = vm.Matrix4.identity()
           ..translate(-gridW / 2, -gridH / 2);
-        final Matrix4 uncenterMatrix = Matrix4.identity()
+        final vm.Matrix4 uncenterMatrix = vm.Matrix4.identity()
           ..translate(gridW / 2, gridH / 2);
 
-        final Matrix4 transform = Matrix4.identity()
+        final vm.Matrix4 transform = vm.Matrix4.identity()
           ..translate(gridW / 2, gridH / 2)
           ..scale(0.7)
           ..rotateX(1.0)
@@ -69,7 +135,11 @@ class GridWidget extends StatelessWidget {
           child: Transform(
             alignment: Alignment.topLeft,
             transform: transform,
-            child: gridContainer,
+            child: SizedBox(
+              width: gridWidth,
+              height: gridHeightPx,
+              child: gridContent,
+            ),
           ),
         );
 
@@ -143,9 +213,9 @@ class CellPainter extends CustomPainter {
       ..style = PaintingStyle.stroke;
     // Only draw the right and bottom borders if this is not a partial cell, or if it is, only up to the partial size
     // Top border
-    canvas.drawLine(Offset(0, 0), Offset(cellWidth, 0), borderPaint);
+    canvas.drawLine(const Offset(0, 0), Offset(cellWidth, 0), borderPaint);
     // Left border
-    canvas.drawLine(Offset(0, 0), Offset(0, cellHeight), borderPaint);
+    canvas.drawLine(const Offset(0, 0), Offset(0, cellHeight), borderPaint);
     // Bottom border (only if last row or not a partial row)
     if (row == grid.length - 1) {
       if (grid.lengthPartialPercentage > 0) {
