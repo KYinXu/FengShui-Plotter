@@ -125,6 +125,8 @@ class _GridWidgetState extends State<GridWidget> {
 
     return LayoutBuilder(
       builder: (context, constraints) {
+        //FIX: Fix this section right here and clean up
+
         //final double availableWidth = constraints.maxWidth;
         // Calculate the true visible width and height, accounting for partial cells
         int fullCols = widget.grid.width - 1;

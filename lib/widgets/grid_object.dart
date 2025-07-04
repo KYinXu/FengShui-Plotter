@@ -14,6 +14,7 @@ class GridObjectWidget extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    //dimensions defined here with cellInchSize
     final dims = ObjectItem.getObjectDimensions(obj.type);
     final double left = obj.col * cellInchSize;
     final double top = obj.row * cellInchSize;
