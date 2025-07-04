@@ -5,10 +5,8 @@ import '../constants/app_constants.dart';
 import '../models/grid_model.dart';
 import '../widgets/grid_input_form.dart';
 import '../widgets/grid_widget.dart';
-import 'package:flutter/gestures.dart';
 import '../widgets/object_palette.dart';
-
-const int kMiddleMouseButton = 0x04;
+import '../widgets/rotation_control_widget.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -20,8 +18,6 @@ class HomeScreen extends StatefulWidget {
 class _HomeScreenState extends State<HomeScreen> {
   Grid? _currentGrid;
   double _rotationZ = -0.7; // Initial Y rotation for the grid
-  bool _isMiddleMouseDown = false;
-  double _lastPointerX = 0.0;
   List<GridObject> _placedObjects = [];
 
   void _onGridCreated(Grid grid) {
@@ -35,6 +31,12 @@ class _HomeScreenState extends State<HomeScreen> {
     setState(() {
       _placedObjects.add(GridObject(type: type, row: row, col: col, icon: icon));
       print('Placed objects: \\${_placedObjects.map((o) => 'type=\\${o.type}, row=\\${o.row}, col=\\${o.col}').toList()}');
+    });
+  }
+
+  void _onRotationChanged(double rotation) {
+    setState(() {
+      _rotationZ = rotation;
     });
   }
 
@@ -59,90 +61,31 @@ class _HomeScreenState extends State<HomeScreen> {
                     AppConstants.defaultPadding,
                     AppConstants.defaultPadding,
                   ),
-                  child: Stack(
-                    children: [
-                      Listener(
-                        onPointerDown: (event) {
-                          if (event.kind == PointerDeviceKind.mouse && event.buttons == kMiddleMouseButton) {
-                            _isMiddleMouseDown = true;
-                            _lastPointerX = event.position.dx;
-                          }
-                        },
-                        onPointerMove: (event) {
-                          if (_isMiddleMouseDown) {
-                            final dx = event.position.dx - _lastPointerX;
-                            _lastPointerX = event.position.dx;
-                            setState(() {
-                              _rotationZ = _rotationZ + dx * 0.01;
-                              if (_rotationZ < -1.5) _rotationZ = -1.5;
-                              if (_rotationZ > 1.5) _rotationZ = 1.5;
-                            });
-                          }
-                        },
-                        onPointerUp: (event) {
-                          if (event.kind == PointerDeviceKind.mouse && event.buttons == 0) {
-                            _isMiddleMouseDown = false;
-                          }
-                        },
-                        child: Container(
-                          decoration: BoxDecoration(
-                            color: Theme.of(context).colorScheme.primary,
-                            borderRadius: BorderRadius.circular(12),
-                          ),
-                          padding: const EdgeInsets.all(12),
-                          child: GridWidget(
-                            grid: _currentGrid!,
-                            rotationZ: _rotationZ,
-                            objects: _placedObjects,
-                            onObjectDropped: _handleObjectDropped,
-                          ),
-                        ),
+                  child: RotationControlWidget(
+                    initialRotation: -0.7,
+                    onRotationChanged: _onRotationChanged,
+                    child: Container(
+                      decoration: BoxDecoration(
+                        color: Theme.of(context).colorScheme.primary,
+                        borderRadius: BorderRadius.circular(12),
                       ),
-                      Positioned(
-                        top: 12,
-                        right: 12,
-                        child: Material(
-                          color: Colors.transparent,
-                          child: IconButton(
-                            icon: const Icon(Icons.refresh, color: Colors.white),
-                            tooltip: 'Reset Rotation',
-                            onPressed: () {
-                              setState(() {
-                                _rotationZ = -0.7;
-                                if (_rotationZ < -1.5) _rotationZ = -1.5;
-                                if (_rotationZ > 1.5) _rotationZ = 1.5;
-                              });
-                            },
-                          ),
-                        ),
+                      padding: const EdgeInsets.all(12),
+                      child: GridWidget(
+                        grid: _currentGrid!,
+                        rotationZ: _rotationZ,
+                        objects: _placedObjects,
+                        onObjectDropped: _handleObjectDropped,
                       ),
-                    ],
+                    ),
                   ),
                 ),
               ),
             ] else
               const Expanded(child: SizedBox()),
             if (_currentGrid != null)
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
-                child: Row(
-                  children: [
-                    const Icon(Icons.rotate_left),
-                    Expanded(
-                      child: Slider(
-                        min: -1.5,
-                        max: 1.5,
-                        value: _rotationZ,
-                        onChanged: (value) {
-                          setState(() {
-                            _rotationZ = value;
-                          });
-                        },
-                      ),
-                    ),
-                    const Icon(Icons.rotate_right),
-                  ],
-                ),
+              RotationSlider(
+                rotation: _rotationZ,
+                onRotationChanged: _onRotationChanged,
               ),
           ],
         ),

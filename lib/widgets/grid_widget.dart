@@ -26,6 +26,10 @@ class _GridWidgetState extends State<GridWidget> {
   String? _previewType;
   IconData? _previewIcon;
 
+  // Constants for 3D transformation
+  static const double _additionalRotationX = 0.8;
+  static const double _scale = 0.7;
+
   void _updatePreview(Offset? cell, String? type, IconData? icon) {
     setState(() {
       _previewCell = cell;
@@ -79,8 +83,8 @@ class _GridWidgetState extends State<GridWidget> {
               gridHeight: gridHeightPx,
               cellInchSize: cellInchSize,
               rotationZ: widget.rotationZ,
-              scale: 0.7,
-              rotateX: 0.0,
+              scale: _scale,
+              rotateX: _additionalRotationX,
             );
             if (gridLocal == null) {
               print('Warning: Could not invert transform matrix');
@@ -114,8 +118,8 @@ class _GridWidgetState extends State<GridWidget> {
               gridHeight: gridHeightPx,
               cellInchSize: cellInchSize,
               rotationZ: widget.rotationZ,
-              scale: 0.7,
-              rotateX: 0.0,
+              scale: _scale,
+              rotateX: _additionalRotationX,
             );
             if (gridLocal != null && details.data['type'] is String && details.data['icon'] is IconData) {
               final String type = details.data['type'];
@@ -203,8 +207,8 @@ class _GridWidgetState extends State<GridWidget> {
         final vm.Matrix4 transform = vm.Matrix4.identity()
           ..translate(gridW / 2, gridH / 2)
           ..rotateZ(widget.rotationZ)
-          ..rotateX(0.0)
-          ..scale(0.7)
+          ..rotateX(_additionalRotationX)
+          ..scale(_scale)
           ..translate(-gridW / 2, -gridH / 2);
 
         final vm.Matrix4 centerMatrix = vm.Matrix4.identity()
@@ -259,7 +263,9 @@ class _GridWidgetState extends State<GridWidget> {
     print('Pointer: \\${pointer.dx}, \\${pointer.dy}');
     if (inverse == null) return null;
     final vm.Vector3 pointer3 = vm.Vector3(pointer.dx, pointer.dy, 0);
-    final vm.Vector3 local3 = inverse.transform3(pointer3);
+    final vm.Vector4 pointer4 = vm.Vector4(pointer.dx, pointer.dy, 0, 1);
+    final vm.Vector4 local4 = inverse.transform(pointer4);
+    final vm.Vector3 local3 = vm.Vector3(local4.x, local4.y, local4.z);
     print('Mapped to grid local: \\${local3.x}, \\${local3.y}');
     print('');
     return Offset(local3.x, local3.y);
