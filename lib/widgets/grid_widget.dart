@@ -2,9 +2,13 @@ import 'package:flutter/material.dart';
 import '../constants/app_constants.dart';
 import '../models/grid_model.dart';
 import 'package:vector_math/vector_math_64.dart' as vm;
+import 'dart:math';
+import 'object_item.dart';
 
 class GridWidget extends StatefulWidget {
   final Grid grid;
+  final double rotationX;
+  final double rotationY;
   final double rotationZ;
   final List<GridObject> objects;
   final void Function(int row, int col, String type, IconData icon)? onObjectDropped;
@@ -12,7 +16,9 @@ class GridWidget extends StatefulWidget {
   const GridWidget({
     super.key,
     required this.grid,
-    this.rotationZ = -0.7,
+    this.rotationX = 0.3,
+    this.rotationY = 0.0,
+    this.rotationZ = 0.0,
     this.objects = const [],
     this.onObjectDropped,
   });
@@ -25,9 +31,10 @@ class _GridWidgetState extends State<GridWidget> {
   Offset? _previewCell;
   String? _previewType;
   IconData? _previewIcon;
+  Offset? _snappedPreviewCell;
 
   // Constants for 3D transformation
-  static const double _additionalRotationX = 0.8;
+  static const double _additionalRotationX = 0.3;
   static const double _scale = 0.7;
 
   void _updatePreview(Offset? cell, String? type, IconData? icon) {
@@ -38,14 +45,69 @@ class _GridWidgetState extends State<GridWidget> {
     });
   }
 
-  // Helper to get object dimensions in grid cells
-  Map<String, int> getObjectDimensions(String type) {
-    switch (type.toLowerCase()) {
-      case 'bed':
-        return {'width': 12, 'height': 12};
-      default:
-        return {'width': 1, 'height': 1};
+  // Helper to check if a cell or area is occupied
+  bool isAreaOccupied(int row, int col, int width, int height) {
+    if (row < 0 || col < 0 || row + height > (widget.grid.width * 12) || col + width > (widget.grid.length * 12)) {
+      return true;
     }
+    for (final obj in widget.objects) {
+      final dims = ObjectItem.getObjectDimensions(obj.type);
+      final int objRow = obj.row;
+      final int objCol = obj.col;
+      final int objWidth = dims['width']!;
+      final int objHeight = dims['height']!;
+      // Check for rectangle overlap
+      if (row < objRow + objHeight && row + height > objRow &&
+          col < objCol + objWidth && col + width > objCol) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  // Helper to find the nearest open location for an object
+  Offset findNearestOpenCell(int startRow, int startCol, int width, int height) {
+    
+    int bestDist = 1 << 30; // large int
+    if(!isAreaOccupied(startRow, startCol, width, height)) {
+      return Offset(startCol.toDouble(), startRow.toDouble());
+    }
+    print("occupied");
+    int row = startRow;
+    int col = startCol;
+    int dx = 0;
+    int dy = 0;
+    while (isAreaOccupied(row, col, width, height)) {
+      row++;
+    }
+    double bestRow = row.toDouble();
+    double bestCol = col.toDouble();
+    // while (true) {
+    //   dy++;
+    //   dx++;
+    //   for (int cur_x = row - dx; row <= min(widget.grid.length - height, row + dx); cur_x++) {
+        
+    //   }
+    //   for (int cur_y = col - dy; cur_y <= min(widget.grid.width - width, col + dy); cur_y++) {
+    //   }
+    // }
+
+
+    // Search the entire grid for the nearest open spot
+    // for (int row = 0; row <= widget.grid.length - height; row++) {
+    //   for (int col = 0; col <= widget.grid.width - width; col++) {
+    //     if (!isAreaOccupied(row, col, width, height)) {
+    //       int dist = (row - startRow) * (row - startRow) + (col - startCol) * (col - startCol);
+    //       if (dist < bestDist) {
+    //         bestDist = dist;
+    //         bestRow = row.toDouble();
+    //         bestCol = col.toDouble();
+    //       }
+    //     }
+    //   }
+    // }
+    
+    return Offset(bestCol, bestRow);
   }
 
   @override
@@ -57,7 +119,7 @@ class _GridWidgetState extends State<GridWidget> {
 
     return LayoutBuilder(
       builder: (context, constraints) {
-        final double availableWidth = constraints.maxWidth;
+        //final double availableWidth = constraints.maxWidth;
         // Calculate the true visible width and height, accounting for partial cells
         int fullCols = widget.grid.width - 1;
         int fullRows = widget.grid.length - 1;
@@ -65,72 +127,97 @@ class _GridWidgetState extends State<GridWidget> {
         double lastRowInches = widget.grid.lengthPartialPercentage > 0 ? widget.grid.lengthPartialPercentage * 12.0 : 12.0;
         double totalColsInches = fullCols * 12.0 + lastColInches;
         double totalRowsInches = fullRows * 12.0 + lastRowInches;
-        final double cellInchSize = availableWidth / totalColsInches;
-        final double gridHeight = cellInchSize * totalRowsInches;
+        final double cellInchSizeW = constraints.maxWidth / totalColsInches;
+        final double cellInchSizeH = constraints.maxHeight / totalRowsInches;
+        final double cellInchSize = cellInchSizeW < cellInchSizeH ? cellInchSizeW : cellInchSizeH;
+        //final double gridHeight = cellInchSize * totalRowsInches;
 
         final gridWidth = cellInchSize * totalColsInches;
         final gridHeightPx = cellInchSize * totalRowsInches;
+        // Calculate centering offset
+        final double offsetX = (constraints.maxWidth - gridWidth) / 2;
+        final double offsetY = (constraints.maxHeight - gridHeightPx) / 2;
         final gridContent = DragTarget<Map<String, dynamic>>(
           onAcceptWithDetails: (details) {
-            print('DragTarget: onAcceptWithDetails with data: \\${details.data} at offset: \\${details.offset}');
             final RenderBox box = context.findRenderObject() as RenderBox;
             final Offset local = box.globalToLocal(details.offset);
-
+            // Adjust for centering offset
+            final Offset gridLocalPointer = local - Offset(offsetX, offsetY);
             // Use inverse transform for accurate picking
             final Offset? gridLocal = _pickGridCell3D(
-              pointer: local,
+              pointer: gridLocalPointer,
               gridWidth: gridWidth,
               gridHeight: gridHeightPx,
               cellInchSize: cellInchSize,
               rotationZ: widget.rotationZ,
               scale: _scale,
-              rotateX: _additionalRotationX,
+              rotateX: widget.rotationX,
+              rotateY: widget.rotationY,
             );
             if (gridLocal == null) {
-              print('Warning: Could not invert transform matrix');
               return;
             }
             final String type = details.data['type'];
-            final dims = getObjectDimensions(type);
+            final dims = ObjectItem.getObjectDimensions(type);
             int col = (gridLocal.dx / cellInchSize).floor();
             int row = (gridLocal.dy / cellInchSize).floor();
             col -= (dims['width']! / 2).floor();
             row -= (dims['height']! / 2).floor();
-            final double left = col * cellInchSize;
-            final double top = row * cellInchSize;
-            final double right = left + cellInchSize;
-            final double bottom = top + cellInchSize;
-            print('Calculated drop cell: row=\\$row, col=\\$col, bounding box: (left=\\$left, top=\\$top, right=\\$right, bottom=\\$bottom)');
+            // Snap to nearest open location
+            final Offset snapped = findNearestOpenCell(row, col, dims['width']!, dims['height']!);
+            final int snappedRow = snapped.dy.toInt();
+            final int snappedCol = snapped.dx.toInt();
+            if (isAreaOccupied(snappedRow, snappedCol, dims['width']!, dims['height']!)) {
+              _updatePreview(null, null, null);
+              return;
+            }
+            final double left = snappedCol * cellInchSize;
+            final double top = snappedRow * cellInchSize;
+            //final double right = left + cellInchSize;
+            //final double bottom = top + cellInchSize;
             if (widget.onObjectDropped != null &&
                 details.data['type'] is String &&
                 details.data['icon'] is IconData) {
-              widget.onObjectDropped!(row, col, details.data['type'], details.data['icon']);
+              widget.onObjectDropped!(snappedRow, snappedCol, details.data['type'], details.data['icon']);
             }
             _updatePreview(null, null, null);
           },
           onMove: (details) {
-            print('DragTarget: onMove with data: \\${details.data} at offset: \\${details.offset}');
             final RenderBox box = context.findRenderObject() as RenderBox;
             final Offset local = box.globalToLocal(details.offset);
+            // Adjust for centering offset
+            final Offset gridLocalPointer = local - Offset(offsetX, offsetY);
             final Offset? gridLocal = _pickGridCell3D(
-              pointer: local,
+              pointer: gridLocalPointer,
               gridWidth: gridWidth,
               gridHeight: gridHeightPx,
               cellInchSize: cellInchSize,
               rotationZ: widget.rotationZ,
               scale: _scale,
-              rotateX: _additionalRotationX,
+              rotateX: widget.rotationX,
+              rotateY: widget.rotationY,
             );
             if (gridLocal != null && details.data['type'] is String && details.data['icon'] is IconData) {
               final String type = details.data['type'];
-              final dims = getObjectDimensions(type);
+              final dims = ObjectItem.getObjectDimensions(type);
               int col = (gridLocal.dx / cellInchSize).floor();
               int row = (gridLocal.dy / cellInchSize).floor();
               col -= (dims['width']! / 2).floor();
               row -= (dims['height']! / 2).floor();
-              _updatePreview(Offset(col.toDouble(), row.toDouble()), type, details.data['icon']);
+              // Snap to nearest open location
+              final Offset snapped = findNearestOpenCell(row, col, dims['width']!, dims['height']!);
+              if (isAreaOccupied(snapped.dy.toInt(), snapped.dx.toInt(), dims['width']!, dims['height']!)) {
+                print("Snap if");
+                _updatePreview(snapped, type, details.data['icon']);
+                _snappedPreviewCell = null;
+              } else {
+                print("Snap else");
+                _updatePreview(snapped, type, details.data['icon']);
+                _snappedPreviewCell = snapped;
+              }
             } else {
               _updatePreview(null, null, null);
+              _snappedPreviewCell = null;
             }
           },
           onLeave: (data) {
@@ -158,8 +245,8 @@ class _GridWidgetState extends State<GridWidget> {
                     child: Opacity(
                       opacity: 0.5,
                       child: Container(
-                        width: cellInchSize * (getObjectDimensions(_previewType!)['width'] ?? 1),
-                        height: cellInchSize * (getObjectDimensions(_previewType!)['height'] ?? 1),
+                        width: cellInchSize * (ObjectItem.getObjectDimensions(_previewType!)['width'] ?? 1),
+                        height: cellInchSize * (ObjectItem.getObjectDimensions(_previewType!)['height'] ?? 1),
                         decoration: BoxDecoration(
                           border: Border.all(color: Colors.green, width: 3),
                           shape: BoxShape.rectangle,
@@ -171,7 +258,7 @@ class _GridWidgetState extends State<GridWidget> {
                   ),
                 // Placed objects
                 ...widget.objects.map((obj) {
-                  final dims = getObjectDimensions(obj.type);
+                  final dims = ObjectItem.getObjectDimensions(obj.type);
                   final double left = obj.col * cellInchSize;
                   final double top = obj.row * cellInchSize;
                   final double objWidth = cellInchSize * dims['width']!;
@@ -207,7 +294,8 @@ class _GridWidgetState extends State<GridWidget> {
         final vm.Matrix4 transform = vm.Matrix4.identity()
           ..translate(gridW / 2, gridH / 2)
           ..rotateZ(widget.rotationZ)
-          ..rotateX(_additionalRotationX)
+          ..rotateX(widget.rotationX)
+          ..rotateY(widget.rotationY)
           ..scale(_scale)
           ..translate(-gridW / 2, -gridH / 2);
 
@@ -227,15 +315,7 @@ class _GridWidgetState extends State<GridWidget> {
           ),
         );
 
-        if (gridHeight < constraints.maxHeight) {
-          // If the grid is smaller than the container, center it.
-          return Center(
-            child: transformedGrid,
-          );
-        }
-
-        // If the grid is larger, make it scrollable.
-        return SingleChildScrollView(
+        return Center(
           child: transformedGrid,
         );
       },
@@ -251,23 +331,21 @@ class _GridWidgetState extends State<GridWidget> {
     required double rotationZ,
     required double scale,
     required double rotateX,
+    required double rotateY,
   }) {
     final vm.Matrix4 transform = vm.Matrix4.identity()
       ..translate(gridWidth / 2, gridHeight / 2)
       ..rotateZ(rotationZ)
       ..rotateX(rotateX)
+      ..rotateY(rotateY)
       ..scale(scale)
       ..translate(-gridWidth / 2, -gridHeight / 2);
     final vm.Matrix4? inverse = vm.Matrix4.tryInvert(transform);
-    print('');
-    print('Pointer: \\${pointer.dx}, \\${pointer.dy}');
     if (inverse == null) return null;
     final vm.Vector3 pointer3 = vm.Vector3(pointer.dx, pointer.dy, 0);
     final vm.Vector4 pointer4 = vm.Vector4(pointer.dx, pointer.dy, 0, 1);
     final vm.Vector4 local4 = inverse.transform(pointer4);
     final vm.Vector3 local3 = vm.Vector3(local4.x, local4.y, local4.z);
-    print('Mapped to grid local: \\${local3.x}, \\${local3.y}');
-    print('');
     return Offset(local3.x, local3.y);
   }
 }

@@ -38,4 +38,13 @@ class ObjectItem extends StatelessWidget {
       ),
     );
   }
+
+  static Map<String, int> getObjectDimensions(String type) {
+    switch (type.toLowerCase()) {
+      case 'bed':
+        return {'width': 80, 'height': 60};
+      default:
+        return {'width': 1, 'height': 1};
+    }
+  }
 } 
