@@ -34,10 +34,20 @@ class _GridWidgetState extends State<GridWidget> {
     });
   }
 
+  // Helper to get object dimensions in grid cells
+  Map<String, int> getObjectDimensions(String type) {
+    switch (type.toLowerCase()) {
+      case 'bed':
+        return {'width': 12, 'height': 12};
+      default:
+        return {'width': 1, 'height': 1};
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
-    final gridCellColor = Colors.transparent;
+    const gridCellColor = Colors.transparent;
     final gridBorderColor = colorScheme.outline;
     final majorGridBorderColor = colorScheme.onSurface;
 
@@ -76,12 +86,12 @@ class _GridWidgetState extends State<GridWidget> {
               print('Warning: Could not invert transform matrix');
               return;
             }
+            final String type = details.data['type'];
+            final dims = getObjectDimensions(type);
             int col = (gridLocal.dx / cellInchSize).floor();
             int row = (gridLocal.dy / cellInchSize).floor();
-            if (details.data['type'].toLowerCase() == 'bed') {
-              col -= 5;
-              row -= 5;
-            }
+            col -= (dims['width']! / 2).floor();
+            row -= (dims['height']! / 2).floor();
             final double left = col * cellInchSize;
             final double top = row * cellInchSize;
             final double right = left + cellInchSize;
@@ -108,13 +118,13 @@ class _GridWidgetState extends State<GridWidget> {
               rotateX: 0.0,
             );
             if (gridLocal != null && details.data['type'] is String && details.data['icon'] is IconData) {
+              final String type = details.data['type'];
+              final dims = getObjectDimensions(type);
               int col = (gridLocal.dx / cellInchSize).floor();
               int row = (gridLocal.dy / cellInchSize).floor();
-              if (details.data['type'].toLowerCase() == 'bed') {
-                col -= 5;
-                row -= 5;
-              }
-              _updatePreview(Offset(col.toDouble(), row.toDouble()), details.data['type'], details.data['icon']);
+              col -= (dims['width']! / 2).floor();
+              row -= (dims['height']! / 2).floor();
+              _updatePreview(Offset(col.toDouble(), row.toDouble()), type, details.data['icon']);
             } else {
               _updatePreview(null, null, null);
             }
@@ -137,15 +147,15 @@ class _GridWidgetState extends State<GridWidget> {
                   ),
                 ),
                 // Preview overlay
-                if (_previewCell != null && _previewType?.toLowerCase() == 'bed' && _previewIcon != null)
+                if (_previewCell != null && _previewType != null && _previewIcon != null)
                   Positioned(
                     left: _previewCell!.dx * cellInchSize,
                     top: _previewCell!.dy * cellInchSize,
                     child: Opacity(
                       opacity: 0.5,
                       child: Container(
-                        width: cellInchSize * 12,
-                        height: cellInchSize * 12,
+                        width: cellInchSize * (getObjectDimensions(_previewType!)['width'] ?? 1),
+                        height: cellInchSize * (getObjectDimensions(_previewType!)['height'] ?? 1),
                         decoration: BoxDecoration(
                           border: Border.all(color: Colors.green, width: 3),
                           shape: BoxShape.rectangle,
@@ -157,11 +167,11 @@ class _GridWidgetState extends State<GridWidget> {
                   ),
                 // Placed objects
                 ...widget.objects.map((obj) {
+                  final dims = getObjectDimensions(obj.type);
                   final double left = obj.col * cellInchSize;
                   final double top = obj.row * cellInchSize;
-                  final bool isBed = obj.type.toLowerCase() == 'bed';
-                  final double objWidth = isBed ? cellInchSize * 12 : cellInchSize;
-                  final double objHeight = isBed ? cellInchSize * 12 : cellInchSize;
+                  final double objWidth = cellInchSize * dims['width']!;
+                  final double objHeight = cellInchSize * dims['height']!;
                   return Positioned(
                     left: left,
                     top: top,
@@ -185,10 +195,10 @@ class _GridWidgetState extends State<GridWidget> {
         // Calculate translation to move the center of the visible grid to the origin
         final double gridW = cellInchSize * totalColsInches;
         final double gridH = cellInchSize * totalRowsInches;
-        final vm.Matrix4 centerMatrix = vm.Matrix4.identity()
-          ..translate(-gridW / 2, -gridH / 2);
-        final vm.Matrix4 uncenterMatrix = vm.Matrix4.identity()
-          ..translate(gridW / 2, gridH / 2);
+        // final vm.Matrix4 centerMatrix = vm.Matrix4.identity()
+        //   ..translate(-gridW / 2, -gridH / 2);
+        // final vm.Matrix4 uncenterMatrix = vm.Matrix4.identity()
+        //   ..translate(gridW / 2, gridH / 2);
 
         final vm.Matrix4 transform = vm.Matrix4.identity()
           ..translate(gridW / 2, gridH / 2)
@@ -197,6 +207,10 @@ class _GridWidgetState extends State<GridWidget> {
           ..scale(0.7)
           ..translate(-gridW / 2, -gridH / 2);
 
+        final vm.Matrix4 centerMatrix = vm.Matrix4.identity()
+          ..translate(-gridW / 2, -gridH / 2);
+        final vm.Matrix4 uncenterMatrix = vm.Matrix4.identity()
+          ..translate(gridW / 2, gridH / 2);
         final transformedGrid = Center(
           child: Transform(
             alignment: Alignment.topLeft,

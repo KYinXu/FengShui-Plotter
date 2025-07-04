@@ -24,12 +24,12 @@ class ObjectItem extends StatelessWidget {
             Draggable(
               data: {'type': label, 'icon': icon},
               feedback: Icon(icon, size: 28, color: Colors.red),
-              child: Icon(icon, size: 28, color: Theme.of(context).colorScheme.primary),
               childWhenDragging: Icon(icon, size: 28, color: Colors.grey.shade300),
               onDragStarted: () {
                 print('Drag started for: $label');
                 if (onDragStarted != null) onDragStarted!();
               },
+              child: Icon(icon, size: 28, color: Theme.of(context).colorScheme.primary),
             ),
             const SizedBox(height: 2),
             Text(label, style: const TextStyle(fontSize: 11)),
