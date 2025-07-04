@@ -4,6 +4,7 @@ import '../models/grid_model.dart';
 import 'package:vector_math/vector_math_64.dart' as vm;
 import 'dart:math';
 import 'object_item.dart';
+import 'grid_object.dart';
 
 class GridWidget extends StatefulWidget {
   final Grid grid;
@@ -47,7 +48,8 @@ class _GridWidgetState extends State<GridWidget> {
 
   // Helper to check if a cell or area is occupied
   bool isAreaOccupied(int row, int col, int width, int height) {
-    if (row < 0 || col < 0 || row + height > (widget.grid.width * 12) || col + width > (widget.grid.length * 12)) {
+    print("len: ${widget.grid.length} width: ${widget.grid.width} row: ${row} col: {$col}");
+    if (row < 0 || col < 0) {
       return true;
     }
     for (final obj in widget.objects) {
@@ -67,7 +69,8 @@ class _GridWidgetState extends State<GridWidget> {
 
   // Helper to find the nearest open location for an object
   Offset findNearestOpenCell(int startRow, int startCol, int width, int height) {
-    
+    double bestRow = 0.0;
+    double bestCol = 0.0;
     int bestDist = 1 << 30; // large int
     if(!isAreaOccupied(startRow, startCol, width, height)) {
       return Offset(startCol.toDouble(), startRow.toDouble());
@@ -75,13 +78,14 @@ class _GridWidgetState extends State<GridWidget> {
     print("occupied");
     int row = startRow;
     int col = startCol;
-    int dx = 0;
-    int dy = 0;
+    // int dx = 0;
+    // int dy = 0;
     while (isAreaOccupied(row, col, width, height)) {
       row++;
+      col++;
     }
-    double bestRow = row.toDouble();
-    double bestCol = col.toDouble();
+    // double bestRow = row.toDouble();
+    // double bestCol = col.toDouble();
     // while (true) {
     //   dy++;
     //   dx++;
@@ -97,8 +101,10 @@ class _GridWidgetState extends State<GridWidget> {
     // for (int row = 0; row <= widget.grid.length - height; row++) {
     //   for (int col = 0; col <= widget.grid.width - width; col++) {
     //     if (!isAreaOccupied(row, col, width, height)) {
+    //       print("a best dist was searched");
     //       int dist = (row - startRow) * (row - startRow) + (col - startCol) * (col - startCol);
     //       if (dist < bestDist) {
+            
     //         bestDist = dist;
     //         bestRow = row.toDouble();
     //         bestCol = col.toDouble();
@@ -167,12 +173,12 @@ class _GridWidgetState extends State<GridWidget> {
             final Offset snapped = findNearestOpenCell(row, col, dims['width']!, dims['height']!);
             final int snappedRow = snapped.dy.toInt();
             final int snappedCol = snapped.dx.toInt();
-            if (isAreaOccupied(snappedRow, snappedCol, dims['width']!, dims['height']!)) {
-              _updatePreview(null, null, null);
-              return;
-            }
-            final double left = snappedCol * cellInchSize;
-            final double top = snappedRow * cellInchSize;
+            // if (isAreaOccupied(snappedRow, snappedCol, dims['width']!, dims['height']!)) {
+            //   _updatePreview(null, null, null);
+            //   return;
+            // }
+            // final double left = snappedCol * cellInchSize;
+            // final double top = snappedRow * cellInchSize;
             //final double right = left + cellInchSize;
             //final double bottom = top + cellInchSize;
             if (widget.onObjectDropped != null &&
@@ -257,27 +263,7 @@ class _GridWidgetState extends State<GridWidget> {
                     ),
                   ),
                 // Placed objects
-                ...widget.objects.map((obj) {
-                  final dims = ObjectItem.getObjectDimensions(obj.type);
-                  final double left = obj.col * cellInchSize;
-                  final double top = obj.row * cellInchSize;
-                  final double objWidth = cellInchSize * dims['width']!;
-                  final double objHeight = cellInchSize * dims['height']!;
-                  return Positioned(
-                    left: left,
-                    top: top,
-                    child: Container(
-                      width: objWidth,
-                      height: objHeight,
-                      decoration: BoxDecoration(
-                        border: Border.all(color: Colors.orange, width: 3),
-                        shape: BoxShape.rectangle,
-                        color: Colors.white.withOpacity(0.8),
-                      ),
-                      child: Icon(obj.icon, size: objWidth * 0.6, color: Colors.black),
-                    ),
-                  );
-                }),
+                ...widget.objects.map((obj) => GridObjectWidget(obj: obj, cellInchSize: cellInchSize)),
               ],
             );
           },
