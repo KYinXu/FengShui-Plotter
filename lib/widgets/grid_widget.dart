@@ -48,8 +48,10 @@ class _GridWidgetState extends State<GridWidget> {
 
   // Helper to check if a cell or area is occupied
   bool isAreaOccupied(int row, int col, int width, int height) {
-    print("len: ${widget.grid.length} width: ${widget.grid.width} row: ${row} col: {$col}");
-    if (row < 0 || col < 0) {
+    print("len: ${GridObjectWidget.getTotalGridWidthInches(widget.grid)} width: ${GridObjectWidget.getTotalGridLengthInches(widget.grid)} row: ${row} col: {$col}");
+    int totWidth = GridObjectWidget.getTotalGridWidthInches(widget.grid).floor();
+    int totLength = GridObjectWidget.getTotalGridLengthInches(widget.grid).floor();
+    if (row < 0 || col < 0 || row + height > totLength || col + width > totWidth) {
       return true;
     }
     for (final obj in widget.objects) {
@@ -80,9 +82,13 @@ class _GridWidgetState extends State<GridWidget> {
     int col = startCol;
     // int dx = 0;
     // int dy = 0;
-    while (isAreaOccupied(row, col, width, height)) {
+    while (isAreaOccupied(row, col, width, height) && row < 600) {
       row++;
       col++;
+    }
+    if (!isAreaOccupied(row, col, width, height)) {
+      bestRow = row + 0.0;
+      bestCol = col + 0.0;
     }
     // double bestRow = row.toDouble();
     // double bestCol = col.toDouble();

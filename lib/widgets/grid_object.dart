@@ -12,6 +12,18 @@ class GridObjectWidget extends StatelessWidget {
     required this.cellInchSize,
   }) : super(key: key);
 
+  /// Returns the total grid width in inches
+  static double getTotalGridWidthInches(Grid grid) {
+    return (grid.width - 1) * 12.0 +
+        (grid.widthPartialPercentage > 0 ? grid.widthPartialPercentage * 12.0 : 12.0);
+  }
+
+  /// Returns the total grid length in inches
+  static double getTotalGridLengthInches(Grid grid) {
+    return (grid.length - 1) * 12.0 +
+        (grid.lengthPartialPercentage > 0 ? grid.lengthPartialPercentage * 12.0 : 12.0);
+  }
+
   @override
   Widget build(BuildContext context) {
     //dimensions defined here with cellInchSize
