@@ -5,6 +5,7 @@ import 'package:vector_math/vector_math_64.dart' as vm;
 import 'dart:math';
 import 'object_item.dart';
 import 'grid_object.dart';
+import 'dart:async';
 
 class GridWidget extends StatefulWidget {
   final Grid grid;
@@ -39,6 +40,13 @@ class _GridWidgetState extends State<GridWidget> {
   static const double _scale = 0.7;
 
   void _updatePreview(Offset? cell, String? type, IconData? icon) {
+    // Only update if the preview state is actually changing
+    if (_previewCell == cell && _previewType == type && _previewIcon == icon) {
+      // No change, skip setState
+      debugPrint('Preview unchanged, skipping setState');
+      return;
+    }
+    debugPrint('Updating preview: cell= [32m$cell [0m, type= [32m$type [0m, icon= [32m$icon [0m');
     setState(() {
       _previewCell = cell;
       _previewType = type;
@@ -70,56 +78,28 @@ class _GridWidgetState extends State<GridWidget> {
   }
 
   // Helper to find the nearest open location for an object
-  Offset findNearestOpenCell(int startRow, int startCol, int width, int height) {
-    double bestRow = 0.0;
-    double bestCol = 0.0;
-    int bestDist = 1 << 30; // large int
-    if(!isAreaOccupied(startRow, startCol, width, height)) {
+  Offset? findNearestOpenCell(int startRow, int startCol, int width, int height, {int radius = 8}) {
+    final int maxRows = widget.grid.lengthInches.floor();
+    final int maxCols = widget.grid.widthInches.floor();
+    if (!isAreaOccupied(startRow, startCol, width, height)) {
       return Offset(startCol.toDouble(), startRow.toDouble());
     }
-    print("occupied");
-    int row = startRow;
-    int col = startCol;
-    // int dx = 0;
-    // int dy = 0;
-    while (isAreaOccupied(row, col, width, height) && row < 600) {
-      row++;
-      col++;
+    for (int dist = 1; dist <= radius; dist++) {
+      for (int dRow = -dist; dRow <= dist; dRow++) {
+        int dCol = dist - dRow.abs();
+        for (int sign = -1; sign <= 1; sign += 2) {
+          int row = startRow + dRow;
+          int col = startCol + sign * dCol;
+          if (row >= 0 && col >= 0 && row + height <= maxRows && col + width <= maxCols) {
+            if (!isAreaOccupied(row, col, width, height)) {
+              return Offset(col.toDouble(), row.toDouble());
+            }
+          }
+        }
+      }
     }
-    if (!isAreaOccupied(row, col, width, height)) {
-      bestRow = row + 0.0;
-      bestCol = col + 0.0;
-    }
-    // double bestRow = row.toDouble();
-    // double bestCol = col.toDouble();
-    // while (true) {
-    //   dy++;
-    //   dx++;
-    //   for (int cur_x = row - dx; row <= min(widget.grid.length - height, row + dx); cur_x++) {
-        
-    //   }
-    //   for (int cur_y = col - dy; cur_y <= min(widget.grid.width - width, col + dy); cur_y++) {
-    //   }
-    // }
-
-
-    // Search the entire grid for the nearest open spot
-    // for (int row = 0; row <= widget.grid.length - height; row++) {
-    //   for (int col = 0; col <= widget.grid.width - width; col++) {
-    //     if (!isAreaOccupied(row, col, width, height)) {
-    //       print("a best dist was searched");
-    //       int dist = (row - startRow) * (row - startRow) + (col - startCol) * (col - startCol);
-    //       if (dist < bestDist) {
-            
-    //         bestDist = dist;
-    //         bestRow = row.toDouble();
-    //         bestCol = col.toDouble();
-    //       }
-    //     }
-    //   }
-    // }
-    
-    return Offset(bestCol, bestRow);
+    // No open cell found in radius
+    return null;
   }
 
   @override
@@ -131,20 +111,12 @@ class _GridWidgetState extends State<GridWidget> {
 
     return LayoutBuilder(
       builder: (context, constraints) {
-        //FIX: Fix this section right here and clean up
-
-        //final double availableWidth = constraints.maxWidth;
-        // Calculate the true visible width and height, accounting for partial cells
-        int fullCols = widget.grid.width - 1;
-        int fullRows = widget.grid.length - 1;
-        double lastColInches = widget.grid.widthPartialPercentage > 0 ? widget.grid.widthPartialPercentage * 12.0 : 12.0;
-        double lastRowInches = widget.grid.lengthPartialPercentage > 0 ? widget.grid.lengthPartialPercentage * 12.0 : 12.0;
-        double totalColsInches = fullCols * 12.0 + lastColInches;
-        double totalRowsInches = fullRows * 12.0 + lastRowInches;
+        // Use the grid's width and length in inches directly
+        final double totalColsInches = widget.grid.widthInches;
+        final double totalRowsInches = widget.grid.lengthInches;
         final double cellInchSizeW = constraints.maxWidth / totalColsInches;
         final double cellInchSizeH = constraints.maxHeight / totalRowsInches;
         final double cellInchSize = cellInchSizeW < cellInchSizeH ? cellInchSizeW : cellInchSizeH;
-        //final double gridHeight = cellInchSize * totalRowsInches;
 
         final gridWidth = cellInchSize * totalColsInches;
         final gridHeightPx = cellInchSize * totalRowsInches;
@@ -178,7 +150,12 @@ class _GridWidgetState extends State<GridWidget> {
             col -= (dims['width']! / 2).floor();
             row -= (dims['height']! / 2).floor();
             // Snap to nearest open location
-            final Offset snapped = findNearestOpenCell(row, col, dims['width']!, dims['height']!);
+            final Offset? snapped = findNearestOpenCell(row, col, dims['width']!, dims['height']!);
+            if (snapped == null) {
+              _updatePreview(null, null, null);
+              _snappedPreviewCell = null;
+              return;
+            }
             final int snappedRow = snapped.dy.toInt();
             final int snappedCol = snapped.dx.toInt();
             // if (isAreaOccupied(snappedRow, snappedCol, dims['width']!, dims['height']!)) {
@@ -197,6 +174,7 @@ class _GridWidgetState extends State<GridWidget> {
             _updatePreview(null, null, null);
           },
           onMove: (details) {
+            debugPrint('onMove called');
             final RenderBox box = context.findRenderObject() as RenderBox;
             final Offset local = box.globalToLocal(details.offset);
             // Adjust for centering offset
@@ -218,18 +196,26 @@ class _GridWidgetState extends State<GridWidget> {
               int row = (gridLocal.dy / cellInchSize).floor();
               col -= (dims['width']! / 2).floor();
               row -= (dims['height']! / 2).floor();
-              // Snap to nearest open location
-              final Offset snapped = findNearestOpenCell(row, col, dims['width']!, dims['height']!);
-              if (isAreaOccupied(snapped.dy.toInt(), snapped.dx.toInt(), dims['width']!, dims['height']!)) {
-                print("Snap if");
-                _updatePreview(snapped, type, details.data['icon']);
+              debugPrint('Trying to snap: row=$row, col=$col, width=${dims['width']}, height=${dims['height']}');
+              // Snap to nearest open location within a limited radius
+              final Offset? snapped = findNearestOpenCell(row, col, dims['width']!, dims['height']!, radius: 8);
+              if (snapped == null) {
+                debugPrint('No open cell found for preview');
+                _updatePreview(null, null, null);
                 _snappedPreviewCell = null;
               } else {
-                print("Snap else");
-                _updatePreview(snapped, type, details.data['icon']);
-                _snappedPreviewCell = snapped;
+                if (isAreaOccupied(snapped.dy.toInt(), snapped.dx.toInt(), dims['width']!, dims['height']!)) {
+                  debugPrint('Snapped cell is still occupied');
+                  _updatePreview(snapped, type, details.data['icon']);
+                  _snappedPreviewCell = null;
+                } else {
+                  debugPrint('Snapped to open cell: $snapped');
+                  _updatePreview(snapped, type, details.data['icon']);
+                  _snappedPreviewCell = snapped;
+                }
               }
             } else {
+              debugPrint('Pointer not over grid or invalid data');
               _updatePreview(null, null, null);
               _snappedPreviewCell = null;
             }
@@ -316,6 +302,11 @@ class _GridWidgetState extends State<GridWidget> {
     );
   }
 
+  @override
+  void dispose() {
+    super.dispose();
+  }
+
   // Helper function for pointer-to-grid mapping using inverse of rendering transform
   Offset? _pickGridCell3D({
     required Offset pointer,
@@ -375,75 +366,27 @@ class CellPainter extends CustomPainter {
     // Draw cell background
     double cellWidth = size.width;
     double cellHeight = size.height;
-    bool isPartial = grid.isPartialCell(row, col);
-
-    if (isPartial) {
-      if (grid.isPartialCell(row, col)) {
-        if (row == grid.length - 1 && grid.lengthPartialPercentage > 0) {
-          cellHeight *= grid.lengthPartialPercentage;
-        }
-        if (col == grid.width - 1 && grid.widthPartialPercentage > 0) {
-          cellWidth *= grid.widthPartialPercentage;
-        }
-      }
-    }
+    // No partial cells logic needed
 
     final backgroundPaint = Paint()..color = gridCellColor;
     canvas.drawRect(Rect.fromLTWH(0, 0, cellWidth, cellHeight), backgroundPaint);
 
-    // Draw borders for the potentially partial cell
+    // Draw borders for the cell
     final borderPaint = Paint()
       ..color = gridBorderColor
       ..strokeWidth = thinBorder
       ..style = PaintingStyle.stroke;
-    // Only draw the right and bottom borders if this is not a partial cell, or if it is, only up to the partial size
     // Top border
     canvas.drawLine(const Offset(0, 0), Offset(cellWidth, 0), borderPaint);
     // Left border
     canvas.drawLine(const Offset(0, 0), Offset(0, cellHeight), borderPaint);
-    // Bottom border (only if last row or not a partial row)
-    if (row == grid.length - 1) {
-      if (grid.lengthPartialPercentage > 0) {
-        // Only draw up to the partial width for the last row
-        canvas.drawLine(Offset(0, cellHeight), Offset(cellWidth, cellHeight), borderPaint);
-      } else {
-        // Full width
-        canvas.drawLine(Offset(0, cellHeight), Offset(cellWidth, cellHeight), borderPaint);
-      }
-    } else {
-      // Not last row, draw full bottom
-      canvas.drawLine(Offset(0, cellHeight), Offset(cellWidth, cellHeight), borderPaint);
-    }
-    // Right border (only if last column or not a partial column)
-    if (col == grid.width - 1) {
-      if (grid.widthPartialPercentage > 0) {
-        // Only draw up to the partial height for the last column
-        canvas.drawLine(Offset(cellWidth, 0), Offset(cellWidth, cellHeight), borderPaint);
-      } else {
-        // Full height
-        canvas.drawLine(Offset(cellWidth, 0), Offset(cellWidth, cellHeight), borderPaint);
-      }
-    } else {
-      // Not last column, draw full right
-      canvas.drawLine(Offset(cellWidth, 0), Offset(cellWidth, cellHeight), borderPaint);
-    }
+    // Bottom border
+    canvas.drawLine(Offset(0, cellHeight), Offset(cellWidth, cellHeight), borderPaint);
+    // Right border
+    canvas.drawLine(Offset(cellWidth, 0), Offset(cellWidth, cellHeight), borderPaint);
 
-    // Draw Major Grid Lines
-    // Top (only for first row)
-    if (row == 0 && row % 12 == 0) {
-      canvas.drawLine(const Offset(0, 0), Offset(cellWidth, 0), thickPaint);
-    }
-    if (col == 0 && col % 12 == 0) {
-      canvas.drawLine(const Offset(0, 0), Offset(0, cellHeight), thickPaint);
-    }
-    // Bottom major line (only for last row in a major block or last row overall, and only up to partial width if partial)
-    if (((row + 1) % 12 == 0 && row == grid.length - 1) || (row + 1 == grid.length && (row + 1) % 12 != 0)) {
-      canvas.drawLine(Offset(0, cellHeight), Offset(cellWidth, cellHeight), thickPaint);
-    }
-    // Right major line (only for last column in a major block or last column overall, and only up to partial height if partial)
-    if (((col + 1) % 12 == 0 && col == grid.width - 1) || (col + 1 == grid.width && (col + 1) % 12 != 0)) {
-      canvas.drawLine(Offset(cellWidth, 0), Offset(cellWidth, cellHeight), thickPaint);
-    }
+    // Draw Major Grid Lines (if needed, can be based on every 12 inches)
+    // ... (optional, can be re-added if you want major lines every 12 inches)
   }
 
   @override
@@ -494,75 +437,34 @@ class GridAreaPainter extends CustomPainter {
       ..color = AppConstants.inchDividerColor(const Color(0x88D72660))
       ..strokeWidth = AppConstants.gridInchDividerWidth;
 
-    int rows = grid.length;
-    int cols = grid.width;
-    double lastRowPartial = grid.lengthPartialPercentage;
-    double lastColPartial = grid.widthPartialPercentage;
-    int fullCols = cols - 1;
-    int fullRows = rows - 1;
-    double lastColInches = lastColPartial > 0 ? lastColPartial * 12.0 : 12.0;
-    double lastRowInches = lastRowPartial > 0 ? lastRowPartial * 12.0 : 12.0;
+    // Paint for major (12-inch) dividers
+    final majorDividerPaint = Paint()
+      ..color = AppConstants.gridPink
+      ..strokeWidth = AppConstants.gridMajorLineWidth;
 
-    // Calculate total grid size in inches for outline
-    double totalColsInches = (cols - 1) * 12.0 + (lastColPartial > 0 ? lastColPartial * 12.0 : 12.0);
-    double totalRowsInches = (rows - 1) * 12.0 + (lastRowPartial > 0 ? lastRowPartial * 12.0 : 12.0);
+    double totalRowsInches = grid.lengthInches;
+    double totalColsInches = grid.widthInches;
 
     // Draw global inch dividers (vertical)
-    int totalInchesX = ((cols - 1) * 12 + (lastColPartial > 0 ? lastColPartial * 12 : 12)).round();
-    int totalInchesY = ((rows - 1) * 12 + (lastRowPartial > 0 ? lastRowPartial * 12 : 12)).round();
+    int totalInchesX = totalColsInches.round();
+    int totalInchesY = totalRowsInches.round();
     for (int i = 1; i < totalInchesX; i++) {
       double x = i * cellInchSize;
-      canvas.drawLine(Offset(x, 0), Offset(x, gridHeight), inchDividerPaint);
+      // Draw major divider every 12 inches
+      if (i % 12 == 0) {
+        canvas.drawLine(Offset(x, 0), Offset(x, gridHeight), majorDividerPaint);
+      } else {
+        canvas.drawLine(Offset(x, 0), Offset(x, gridHeight), inchDividerPaint);
+      }
     }
     // Draw global inch dividers (horizontal)
     for (int i = 1; i < totalInchesY; i++) {
       double y = i * cellInchSize;
-      canvas.drawLine(Offset(0, y), Offset(gridWidth, y), inchDividerPaint);
-    }
-
-    // Draw cells (backgrounds)
-    for (int row = 0; row < rows; row++) {
-      for (int col = 0; col < cols; col++) {
-        double w = (col == cols - 1) ? lastColInches * cellInchSize : 12.0 * cellInchSize;
-        double h = (row == rows - 1) ? lastRowInches * cellInchSize : 12.0 * cellInchSize;
-        double x = 0;
-        for (int c = 0; c < col; c++) {
-          x += (c == cols - 2 && lastColPartial > 0) ? lastColInches * cellInchSize : 12.0 * cellInchSize;
-        }
-        double y = 0;
-        for (int r = 0; r < row; r++) {
-          y += (r == rows - 2 && lastRowPartial > 0) ? lastRowInches * cellInchSize : 12.0 * cellInchSize;
-        }
-        canvas.drawRect(Rect.fromLTWH(x, y, w, h), backgroundPaint);
-      }
-    }
-
-    // Draw thin borders
-    final bolderThickPaint = Paint()
-      ..color = AppConstants.gridPink
-      ..strokeWidth = AppConstants.gridMajorLineWidth;
-
-    // Draw major (foot) grid lines from the top-left corner (0,0)
-    Set<double> yLines = {};
-    for (double y = 0; y <= gridHeight + 0.1; y += 12 * cellInchSize) {
-      yLines.add(y);
-      canvas.drawLine(Offset(0, y), Offset(gridWidth, y), bolderThickPaint);
-    }
-    if ((gridHeight / cellInchSize) % 12 != 0) {
-      double y = gridHeight;
-      if (!yLines.contains(y)) {
-        canvas.drawLine(Offset(0, y), Offset(gridWidth, y), bolderThickPaint);
-      }
-    }
-    Set<double> xLines = {};
-    for (double x = 0; x <= gridWidth + 0.1; x += 12 * cellInchSize) {
-      xLines.add(x);
-      canvas.drawLine(Offset(x, 0), Offset(x, gridHeight), bolderThickPaint);
-    }
-    if ((gridWidth / cellInchSize) % 12 != 0) {
-      double x = gridWidth;
-      if (!xLines.contains(x)) {
-        canvas.drawLine(Offset(x, 0), Offset(x, gridHeight), bolderThickPaint);
+      // Draw major divider every 12 inches
+      if (i % 12 == 0) {
+        canvas.drawLine(Offset(0, y), Offset(gridWidth, y), majorDividerPaint);
+      } else {
+        canvas.drawLine(Offset(0, y), Offset(gridWidth, y), inchDividerPaint);
       }
     }
 
