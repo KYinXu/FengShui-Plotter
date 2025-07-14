@@ -46,3 +46,6 @@ app.*.map.json
 
 #Personal files
 notes.txt
+
+#Python scripts
+venv/

@@ -7,6 +7,7 @@ import '../widgets/grid_input_form.dart';
 import '../widgets/grid_widget.dart';
 import '../widgets/object_palette.dart';
 import '../widgets/rotation_control_widget.dart';
+import '../services/auto_placer_service.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -19,6 +20,7 @@ class _HomeScreenState extends State<HomeScreen> {
   Grid? _currentGrid;
   double _rotationZ = -0.7; // Initial Y rotation for the grid
   List<GridObject> _placedObjects = [];
+  bool _isAutoPlacing = false;
 
   void _onGridCreated(Grid grid) {
     setState(() {
@@ -53,6 +55,45 @@ class _HomeScreenState extends State<HomeScreen> {
             ),
             if (_currentGrid != null) ...[
               const ObjectPalette(),
+              Padding(
+                padding: const EdgeInsets.symmetric(vertical: 8.0),
+                child: ElevatedButton.icon(
+                  icon: const Icon(Icons.auto_fix_high),
+                  label: const Text('Auto Place Objects'),
+                  onPressed: () async {
+                    if (_currentGrid == null) return;
+                    setState(() => _isAutoPlacing = true);
+                    try {
+                      // Prepare grid data for the Python service
+                      final gridData = {
+                        'length': _currentGrid!.lengthInches,
+                        'width': _currentGrid!.widthInches,
+                        // Add more fields if needed
+                      };
+                      final placements = await AutoPlacerService.getPlacements(gridData);
+                      setState(() {
+                        _placedObjects = placements.map((p) => GridObject(
+                          type: p['type'] ?? 'Unknown',
+                          row: p['y'] ?? 0,
+                          col: p['x'] ?? 0,
+                          icon: Icons.auto_awesome, // Use a default icon or map type to icon
+                        )).toList();
+                      });
+                    } catch (e) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(content: Text('Auto placement failed: $e')),
+                      );
+                    } finally {
+                      setState(() => _isAutoPlacing = false);
+                    }
+                  },
+                ),
+              ),
+              if (_isAutoPlacing)
+                const Padding(
+                  padding: EdgeInsets.symmetric(vertical: 8.0),
+                  child: CircularProgressIndicator(),
+                ),
               Expanded(
                 child: Padding(
                   padding: const EdgeInsets.fromLTRB(
