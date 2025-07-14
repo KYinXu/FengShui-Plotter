@@ -54,6 +54,55 @@ class _GridWidgetState extends State<GridWidget> {
     });
   }
 
+  int _searchToken = 0;
+
+  void _handlePreviewMove(Map<String, dynamic> data, Offset pointerOffset, double offsetX, double offsetY, double gridWidth, double gridHeightPx, double cellInchSize) {
+    final int myToken = ++_searchToken;
+    Future(() {
+      if (data['type'] is! String || data['icon'] is! IconData) return;
+      final String type = data['type'];
+      final dims = ObjectItem.getObjectDimensions(type);
+      final RenderBox? box = context.findRenderObject() as RenderBox?;
+      if (box == null) return;
+      final Offset local = box.globalToLocal(pointerOffset);
+      final Offset gridLocalPointer = local - Offset(offsetX, offsetY);
+      final Offset? gridLocal = _pickGridCell3D(
+        pointer: gridLocalPointer,
+        gridWidth: gridWidth,
+        gridHeight: gridHeightPx,
+        cellInchSize: cellInchSize,
+        rotationZ: widget.rotationZ,
+        scale: _scale,
+        rotateX: widget.rotationX,
+        rotateY: widget.rotationY,
+      );
+      if (gridLocal != null) {
+        int col = (gridLocal.dx / cellInchSize).floor();
+        int row = (gridLocal.dy / cellInchSize).floor();
+        col -= (dims['width']! / 2).floor();
+        row -= (dims['height']! / 2).floor();
+        final Offset? snapped = findNearestOpenCell(row, col, dims['width']!, dims['height']!, radius: 8);
+        if (myToken != _searchToken) return; // Outdated, ignore result
+        if (snapped == null) {
+          _updatePreview(null, null, null);
+          _snappedPreviewCell = null;
+        } else {
+          if (isAreaOccupied(snapped.dy.toInt(), snapped.dx.toInt(), dims['width']!, dims['height']!)) {
+            _updatePreview(snapped, type, data['icon']);
+            _snappedPreviewCell = null;
+          } else {
+            _updatePreview(snapped, type, data['icon']);
+            _snappedPreviewCell = snapped;
+          }
+        }
+      } else {
+        if (myToken != _searchToken) return;
+        _updatePreview(null, null, null);
+        _snappedPreviewCell = null;
+      }
+    });
+  }
+
   // Helper to check if a cell or area is occupied
   bool isAreaOccupied(int row, int col, int width, int height) {
     print("len: ${GridObjectWidget.getTotalGridWidthInches(widget.grid)} width: ${GridObjectWidget.getTotalGridLengthInches(widget.grid)} row: ${row} col: {$col}");
@@ -81,6 +130,10 @@ class _GridWidgetState extends State<GridWidget> {
   Offset? findNearestOpenCell(int startRow, int startCol, int width, int height, {int radius = 8}) {
     final int maxRows = widget.grid.lengthInches.floor();
     final int maxCols = widget.grid.widthInches.floor();
+    // Early exit: object can never fit in the grid
+    if (width > maxCols || height > maxRows) {
+      return null;
+    }
     if (!isAreaOccupied(startRow, startCol, width, height)) {
       return Offset(startCol.toDouble(), startRow.toDouble());
     }
@@ -175,50 +228,8 @@ class _GridWidgetState extends State<GridWidget> {
           },
           onMove: (details) {
             debugPrint('onMove called');
-            final RenderBox box = context.findRenderObject() as RenderBox;
-            final Offset local = box.globalToLocal(details.offset);
-            // Adjust for centering offset
-            final Offset gridLocalPointer = local - Offset(offsetX, offsetY);
-            final Offset? gridLocal = _pickGridCell3D(
-              pointer: gridLocalPointer,
-              gridWidth: gridWidth,
-              gridHeight: gridHeightPx,
-              cellInchSize: cellInchSize,
-              rotationZ: widget.rotationZ,
-              scale: _scale,
-              rotateX: widget.rotationX,
-              rotateY: widget.rotationY,
-            );
-            if (gridLocal != null && details.data['type'] is String && details.data['icon'] is IconData) {
-              final String type = details.data['type'];
-              final dims = ObjectItem.getObjectDimensions(type);
-              int col = (gridLocal.dx / cellInchSize).floor();
-              int row = (gridLocal.dy / cellInchSize).floor();
-              col -= (dims['width']! / 2).floor();
-              row -= (dims['height']! / 2).floor();
-              debugPrint('Trying to snap: row=$row, col=$col, width=${dims['width']}, height=${dims['height']}');
-              // Snap to nearest open location within a limited radius
-              final Offset? snapped = findNearestOpenCell(row, col, dims['width']!, dims['height']!, radius: 8);
-              if (snapped == null) {
-                debugPrint('No open cell found for preview');
-                _updatePreview(null, null, null);
-                _snappedPreviewCell = null;
-              } else {
-                if (isAreaOccupied(snapped.dy.toInt(), snapped.dx.toInt(), dims['width']!, dims['height']!)) {
-                  debugPrint('Snapped cell is still occupied');
-                  _updatePreview(snapped, type, details.data['icon']);
-                  _snappedPreviewCell = null;
-                } else {
-                  debugPrint('Snapped to open cell: $snapped');
-                  _updatePreview(snapped, type, details.data['icon']);
-                  _snappedPreviewCell = snapped;
-                }
-              }
-            } else {
-              debugPrint('Pointer not over grid or invalid data');
-              _updatePreview(null, null, null);
-              _snappedPreviewCell = null;
-            }
+            // Use async+token approach for preview update
+            _handlePreviewMove(details.data, details.offset, offsetX, offsetY, gridWidth, gridHeightPx, cellInchSize);
           },
           onLeave: (data) {
             _updatePreview(null, null, null);
