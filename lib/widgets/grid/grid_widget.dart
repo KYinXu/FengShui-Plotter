@@ -16,6 +16,7 @@ class GridWidget extends StatefulWidget {
   final double rotationZ;
   final List<GridObject> objects;
   final void Function(int row, int col, String type, IconData icon, [int rotation])? onObjectDropped;
+  
 
   const GridWidget({
     super.key,
@@ -32,6 +33,7 @@ class GridWidget extends StatefulWidget {
 }
 
 class _GridWidgetState extends State<GridWidget> {
+  final snappingRadius = 20;
   Offset? _previewCell;
   String? _previewType;
   IconData? _previewIcon;
@@ -59,7 +61,8 @@ class _GridWidgetState extends State<GridWidget> {
   int _searchToken = 0;
 
   // Polygon-based area occupied check
-  bool isAreaOccupiedPolygon(int row, int col, String type, int rotation) {
+  // O(n) for number of objects
+  bool isAreaOccupied(int row, int col, String type, int rotation) {
     final poly = getTransformedPolygon(type, row, col, rotation);
     final gridW = widget.grid.widthInches.floor();
     final gridH = widget.grid.lengthInches.floor();
@@ -72,20 +75,43 @@ class _GridWidgetState extends State<GridWidget> {
   }
 
   // Polygon-based nearest open cell
-  Offset? findNearestOpenCellPolygon(int startRow, int startCol, String type, int rotation, {int radius = 8}) {
+  // 
+  Offset? findNearestOpenCell(int startRow, int startCol, String type, int rotation, {int radius = 8}) {
     final gridW = widget.grid.widthInches.floor();
     final gridH = widget.grid.lengthInches.floor();
-    if (!isAreaOccupiedPolygon(startRow, startCol, type, rotation)) {
-      return Offset(startCol.toDouble(), startRow.toDouble());
-    }
+    // Try the initial position first
+    final poly = getTransformedPolygon(type, startRow, startCol, rotation);
+      bool collision = false;
+      for (final obj in widget.objects) {
+        if (polygonsIntersect(poly, obj.getTransformedPolygon())) {
+          print("intersect");
+          collision = true;
+          break;
+        }
+      }
+      if (!collision) return Offset(startCol.toDouble(), startRow.toDouble());
+    //for out of bounds, attempt to snap inside
+    // if(!polygonInBounds(poly, gridW, gridH)) {
+    //   return null;
+    // }
+    // Spiral search for nearest open cell
+    print("Snapping to a new point");
     for (int dist = 1; dist <= radius; dist++) {
       for (int dRow = -dist; dRow <= dist; dRow++) {
         int dCol = dist - dRow.abs();
         for (int sign = -1; sign <= 1; sign += 2) {
           int row = startRow + dRow;
           int col = startCol + sign * dCol;
-          if (row >= 0 && col >= 0 && row <= gridH && col <= gridW) {
-            if (!isAreaOccupiedPolygon(row, col, type, rotation)) {
+          final candidatePoly = getTransformedPolygon(type, row, col, rotation);
+          if (polygonInBounds(candidatePoly, gridW, gridH)) {
+            bool collision = false;
+            for (final obj in widget.objects) {
+              if (polygonsIntersect(candidatePoly, obj.getTransformedPolygon())) {
+                collision = true;
+                break;
+              }
+            }
+            if (!collision) {
               return Offset(col.toDouble(), row.toDouble());
             }
           }
@@ -119,29 +145,38 @@ class _GridWidgetState extends State<GridWidget> {
       if (gridLocal != null) {
         int col = (gridLocal.dx / cellInchSize).floor();
         int row = (gridLocal.dy / cellInchSize).floor();
-        // Center polygon at pointer
         final poly = ObjectItem.getObjectPolygon(type);
-        double minX = poly.map((p) => p.dx).reduce((a, b) => a < b ? a : b);
-        double minY = poly.map((p) => p.dy).reduce((a, b) => a < b ? a : b);
-        double maxX = poly.map((p) => p.dx).reduce((a, b) => a > b ? a : b);
-        double maxY = poly.map((p) => p.dy).reduce((a, b) => a > b ? a : b);
-        int w = (maxX - minX).round();
-        int h = (maxY - minY).round();
-        col -= (w / 2).floor();
-        row -= (h / 2).floor();
-        final Offset? snapped = findNearestOpenCellPolygon(row, col, type, _previewRotation, radius: 8);
+        // Use centering offset for both preview and placement
+        Offset centerOffset = getCenteringOffset(poly);
+        int unclampedCol = col - centerOffset.dx.floor();
+        int unclampedRow = row - centerOffset.dy.floor();
+        final gridW = widget.grid.widthInches.floor();
+        final gridH = widget.grid.lengthInches.floor();
+        // Clamp preview position to grid
+        Offset clamped = clampPolygonToGrid(type, unclampedRow, unclampedCol, _previewRotation, gridW, gridH);
+        // For preview: check if clamped preview polygon is in bounds
+        final previewPoly = getTransformedPolygon(type, clamped.dy.toInt(), clamped.dx.toInt(), _previewRotation);
+        if (!polygonInBounds(previewPoly, gridW, gridH)) {
+          _updatePreview(null, null, null);
+          _snappedPreviewCell = null;
+          return;
+        }
+        // For snapping/placement, use clamped position
+        int snapCol = clamped.dx.toInt();
+        int snapRow = clamped.dy.toInt();
+        // Check if initial snapped position is valid
+        bool valid = !isAreaOccupied(snapRow, snapCol, type, _previewRotation);
+        Offset? snapped = valid
+          ? Offset(snapCol.toDouble(), snapRow.toDouble())
+          : findNearestOpenCell(snapRow, snapCol, type, _previewRotation, radius: snappingRadius);
         if (myToken != _searchToken) return; // Outdated, ignore result
         if (snapped == null) {
           _updatePreview(null, null, null);
           _snappedPreviewCell = null;
         } else {
-          if (isAreaOccupiedPolygon(snapped.dy.toInt(), snapped.dx.toInt(), type, _previewRotation)) {
-            _updatePreview(snapped, type, data['icon']);
-            _snappedPreviewCell = null;
-          } else {
-            _updatePreview(snapped, type, data['icon']);
-            _snappedPreviewCell = snapped;
-          }
+          // Show preview at the snapped position (centered visually, but only once)
+          _updatePreview(snapped, type, data['icon']);
+          _snappedPreviewCell = snapped;
         }
       } else {
         if (myToken != _searchToken) return;
@@ -199,32 +234,41 @@ class _GridWidgetState extends State<GridWidget> {
               return;
             }
             final String type = details.data['type'];
-            final dims = ObjectItem.getObjectDimensions(type);
+            final poly = ObjectItem.getObjectPolygon(type);
             int col = (gridLocal.dx / cellInchSize).floor();
             int row = (gridLocal.dy / cellInchSize).floor();
-            col -= (dims['width']! / 2).floor();
-            row -= (dims['height']! / 2).floor();
-            // Snap to nearest open location
-            final Offset? snapped = findNearestOpenCellPolygon(row, col, type, _previewRotation, radius: 8);
+            Offset centerOffset = getCenteringOffset(poly);
+            int unclampedCol = col - centerOffset.dx.floor();
+            int unclampedRow = row - centerOffset.dy.floor();
+            final gridW = widget.grid.widthInches.floor();
+            final gridH = widget.grid.lengthInches.floor();
+            // Clamp placement position to grid
+            Offset clamped = clampPolygonToGrid(type, unclampedRow, unclampedCol, _previewRotation, gridW, gridH);
+            int snapCol = clamped.dx.toInt();
+            int snapRow = clamped.dy.toInt();
+            // If clamped position is not valid, snap to nearest open cell
+            bool valid = !isAreaOccupied(snapRow, snapCol, type, _previewRotation);
+            Offset? snapped = valid
+              ? Offset(snapCol.toDouble(), snapRow.toDouble())
+              : findNearestOpenCell(snapRow, snapCol, type, _previewRotation, radius: snappingRadius);
             if (snapped == null) {
               _updatePreview(null, null, null);
               _snappedPreviewCell = null;
               return;
             }
-            final int snappedRow = snapped.dy.toInt();
-            final int snappedCol = snapped.dx.toInt();
-            // if (isAreaOccupied(snappedRow, snappedCol, dims['width']!, dims['height']!)) {
-            //   _updatePreview(null, null, null);
-            //   return;
-            // }
-            // final double left = snappedCol * cellInchSize;
-            // final double top = snappedRow * cellInchSize;
-            //final double right = left + cellInchSize;
-            //final double bottom = top + cellInchSize;
+            snapRow = snapped.dy.toInt();
+            snapCol = snapped.dx.toInt();
+            // Print bounds of placement location
+            final placedPoly = getTransformedPolygon(type, snapRow, snapCol, _previewRotation);
+            final pMinX = placedPoly.map((p) => p.dx).reduce((a, b) => a < b ? a : b);
+            final pMinY = placedPoly.map((p) => p.dy).reduce((a, b) => a < b ? a : b);
+            final pMaxX = placedPoly.map((p) => p.dx).reduce((a, b) => a > b ? a : b);
+            final pMaxY = placedPoly.map((p) => p.dy).reduce((a, b) => a > b ? a : b);
+            print('Placement bounds: minX=$pMinX, minY=$pMinY, maxX=$pMaxX, maxY=$pMaxY');
             if (widget.onObjectDropped != null &&
                 details.data['type'] is String &&
                 details.data['icon'] is IconData) {
-              widget.onObjectDropped!(snappedRow, snappedCol, details.data['type'], details.data['icon'], _previewRotation);
+              widget.onObjectDropped!(snapRow, snapCol, details.data['type'], details.data['icon'], _previewRotation);
             }
             _updatePreview(null, null, null);
           },
