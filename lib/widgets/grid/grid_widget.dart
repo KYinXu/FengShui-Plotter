@@ -1,11 +1,13 @@
 import 'package:flutter/material.dart';
-import '../constants/app_constants.dart';
-import '../models/grid_model.dart';
+import '../../constants/app_constants.dart';
+import '../../models/grid_model.dart';
 import 'package:vector_math/vector_math_64.dart' as vm;
 import 'dart:math';
-import 'object_item.dart';
+import '../objects/object_item.dart';
 import 'grid_object.dart';
 import 'dart:async';
+import 'package:flutter/services.dart';
+import 'grid_helpers.dart';
 
 class GridWidget extends StatefulWidget {
   final Grid grid;
@@ -13,7 +15,7 @@ class GridWidget extends StatefulWidget {
   final double rotationY;
   final double rotationZ;
   final List<GridObject> objects;
-  final void Function(int row, int col, String type, IconData icon)? onObjectDropped;
+  final void Function(int row, int col, String type, IconData icon, [int rotation])? onObjectDropped;
 
   const GridWidget({
     super.key,
@@ -34,28 +36,66 @@ class _GridWidgetState extends State<GridWidget> {
   String? _previewType;
   IconData? _previewIcon;
   Offset? _snappedPreviewCell;
+  int _previewRotation = 0; // 0, 90, 180, 270
+  final FocusNode _focusNode = FocusNode();
 
   // Constants for 3D transformation
   static const double _additionalRotationX = 0.3;
   static const double _scale = 0.7;
 
-  void _updatePreview(Offset? cell, String? type, IconData? icon) {
-    // Only update if the preview state is actually changing
-    if (_previewCell == cell && _previewType == type && _previewIcon == icon) {
-      // No change, skip setState
-      debugPrint('Preview unchanged, skipping setState');
+  void _updatePreview(Offset? cell, String? type, IconData? icon, [int? rotation]) {
+    if (_previewCell == cell && _previewType == type && _previewIcon == icon && (rotation == null || _previewRotation == rotation)) {
       return;
     }
-    debugPrint('Updating preview: cell= [32m$cell [0m, type= [32m$type [0m, icon= [32m$icon [0m');
+    debugPrint('Updating preview: cell= [32m$cell [0m, type= [32m$type [0m, icon= [32m$icon [0m, rot= [32m${rotation ?? _previewRotation} [0m');
     setState(() {
       _previewCell = cell;
       _previewType = type;
       _previewIcon = icon;
+      if (rotation != null) _previewRotation = rotation;
     });
   }
 
   int _searchToken = 0;
 
+  // Polygon-based area occupied check
+  bool isAreaOccupiedPolygon(int row, int col, String type, int rotation) {
+    final poly = getTransformedPolygon(type, row, col, rotation);
+    final gridW = widget.grid.widthInches.floor();
+    final gridH = widget.grid.lengthInches.floor();
+    if (!polygonInBounds(poly, gridW, gridH)) return true;
+    for (final obj in widget.objects) {
+      final objPoly = obj.getTransformedPolygon();
+      if (polygonsIntersect(poly, objPoly)) return true;
+    }
+    return false;
+  }
+
+  // Polygon-based nearest open cell
+  Offset? findNearestOpenCellPolygon(int startRow, int startCol, String type, int rotation, {int radius = 8}) {
+    final gridW = widget.grid.widthInches.floor();
+    final gridH = widget.grid.lengthInches.floor();
+    if (!isAreaOccupiedPolygon(startRow, startCol, type, rotation)) {
+      return Offset(startCol.toDouble(), startRow.toDouble());
+    }
+    for (int dist = 1; dist <= radius; dist++) {
+      for (int dRow = -dist; dRow <= dist; dRow++) {
+        int dCol = dist - dRow.abs();
+        for (int sign = -1; sign <= 1; sign += 2) {
+          int row = startRow + dRow;
+          int col = startCol + sign * dCol;
+          if (row >= 0 && col >= 0 && row <= gridH && col <= gridW) {
+            if (!isAreaOccupiedPolygon(row, col, type, rotation)) {
+              return Offset(col.toDouble(), row.toDouble());
+            }
+          }
+        }
+      }
+    }
+    return null;
+  }
+
+  // Update preview/placement logic to use polygon system
   void _handlePreviewMove(Map<String, dynamic> data, Offset pointerOffset, double offsetX, double offsetY, double gridWidth, double gridHeightPx, double cellInchSize) {
     final int myToken = ++_searchToken;
     Future(() {
@@ -79,15 +119,23 @@ class _GridWidgetState extends State<GridWidget> {
       if (gridLocal != null) {
         int col = (gridLocal.dx / cellInchSize).floor();
         int row = (gridLocal.dy / cellInchSize).floor();
-        col -= (dims['width']! / 2).floor();
-        row -= (dims['height']! / 2).floor();
-        final Offset? snapped = findNearestOpenCell(row, col, dims['width']!, dims['height']!, radius: 8);
+        // Center polygon at pointer
+        final poly = ObjectItem.getObjectPolygon(type);
+        double minX = poly.map((p) => p.dx).reduce((a, b) => a < b ? a : b);
+        double minY = poly.map((p) => p.dy).reduce((a, b) => a < b ? a : b);
+        double maxX = poly.map((p) => p.dx).reduce((a, b) => a > b ? a : b);
+        double maxY = poly.map((p) => p.dy).reduce((a, b) => a > b ? a : b);
+        int w = (maxX - minX).round();
+        int h = (maxY - minY).round();
+        col -= (w / 2).floor();
+        row -= (h / 2).floor();
+        final Offset? snapped = findNearestOpenCellPolygon(row, col, type, _previewRotation, radius: 8);
         if (myToken != _searchToken) return; // Outdated, ignore result
         if (snapped == null) {
           _updatePreview(null, null, null);
           _snappedPreviewCell = null;
         } else {
-          if (isAreaOccupied(snapped.dy.toInt(), snapped.dx.toInt(), dims['width']!, dims['height']!)) {
+          if (isAreaOccupiedPolygon(snapped.dy.toInt(), snapped.dx.toInt(), type, _previewRotation)) {
             _updatePreview(snapped, type, data['icon']);
             _snappedPreviewCell = null;
           } else {
@@ -103,56 +151,10 @@ class _GridWidgetState extends State<GridWidget> {
     });
   }
 
-  // Helper to check if a cell or area is occupied
-  bool isAreaOccupied(int row, int col, int width, int height) {
-    print("len: ${GridObjectWidget.getTotalGridWidthInches(widget.grid)} width: ${GridObjectWidget.getTotalGridLengthInches(widget.grid)} row: ${row} col: {$col}");
-    int totWidth = GridObjectWidget.getTotalGridWidthInches(widget.grid).floor();
-    int totLength = GridObjectWidget.getTotalGridLengthInches(widget.grid).floor();
-    if (row < 0 || col < 0 || row + height > totLength || col + width > totWidth) {
-      return true;
-    }
-    for (final obj in widget.objects) {
-      final dims = ObjectItem.getObjectDimensions(obj.type);
-      final int objRow = obj.row;
-      final int objCol = obj.col;
-      final int objWidth = dims['width']!;
-      final int objHeight = dims['height']!;
-      // Check for rectangle overlap
-      if (row < objRow + objHeight && row + height > objRow &&
-          col < objCol + objWidth && col + width > objCol) {
-        return true;
-      }
-    }
-    return false;
-  }
-
-  // Helper to find the nearest open location for an object
-  Offset? findNearestOpenCell(int startRow, int startCol, int width, int height, {int radius = 8}) {
-    final int maxRows = widget.grid.lengthInches.floor();
-    final int maxCols = widget.grid.widthInches.floor();
-    // Early exit: object can never fit in the grid
-    if (width > maxCols || height > maxRows) {
-      return null;
-    }
-    if (!isAreaOccupied(startRow, startCol, width, height)) {
-      return Offset(startCol.toDouble(), startRow.toDouble());
-    }
-    for (int dist = 1; dist <= radius; dist++) {
-      for (int dRow = -dist; dRow <= dist; dRow++) {
-        int dCol = dist - dRow.abs();
-        for (int sign = -1; sign <= 1; sign += 2) {
-          int row = startRow + dRow;
-          int col = startCol + sign * dCol;
-          if (row >= 0 && col >= 0 && row + height <= maxRows && col + width <= maxCols) {
-            if (!isAreaOccupied(row, col, width, height)) {
-              return Offset(col.toDouble(), row.toDouble());
-            }
-          }
-        }
-      }
-    }
-    // No open cell found in radius
-    return null;
+  @override
+  void dispose() {
+    _focusNode.dispose();
+    super.dispose();
   }
 
   @override
@@ -203,7 +205,7 @@ class _GridWidgetState extends State<GridWidget> {
             col -= (dims['width']! / 2).floor();
             row -= (dims['height']! / 2).floor();
             // Snap to nearest open location
-            final Offset? snapped = findNearestOpenCell(row, col, dims['width']!, dims['height']!);
+            final Offset? snapped = findNearestOpenCellPolygon(row, col, type, _previewRotation, radius: 8);
             if (snapped == null) {
               _updatePreview(null, null, null);
               _snappedPreviewCell = null;
@@ -222,12 +224,11 @@ class _GridWidgetState extends State<GridWidget> {
             if (widget.onObjectDropped != null &&
                 details.data['type'] is String &&
                 details.data['icon'] is IconData) {
-              widget.onObjectDropped!(snappedRow, snappedCol, details.data['type'], details.data['icon']);
+              widget.onObjectDropped!(snappedRow, snappedCol, details.data['type'], details.data['icon'], _previewRotation);
             }
             _updatePreview(null, null, null);
           },
           onMove: (details) {
-            debugPrint('onMove called');
             // Use async+token approach for preview update
             _handlePreviewMove(details.data, details.offset, offsetX, offsetY, gridWidth, gridHeightPx, cellInchSize);
           },
@@ -255,15 +256,18 @@ class _GridWidgetState extends State<GridWidget> {
                     top: _previewCell!.dy * cellInchSize,
                     child: Opacity(
                       opacity: 0.5,
-                      child: Container(
-                        width: cellInchSize * (ObjectItem.getObjectDimensions(_previewType!)['width'] ?? 1),
-                        height: cellInchSize * (ObjectItem.getObjectDimensions(_previewType!)['height'] ?? 1),
-                        decoration: BoxDecoration(
-                          border: Border.all(color: Colors.green, width: 3),
-                          shape: BoxShape.rectangle,
-                          color: Colors.red.withOpacity(0.2),
+                      child: Transform.rotate(
+                        angle: (_previewRotation % 360) * 3.1415926535897932 / 180.0,
+                        child: Container(
+                          width: cellInchSize * (ObjectItem.getObjectDimensions(_previewType!)['width'] ?? 1),
+                          height: cellInchSize * (ObjectItem.getObjectDimensions(_previewType!)['height'] ?? 1),
+                          decoration: BoxDecoration(
+                            border: Border.all(color: Colors.green, width: 3),
+                            shape: BoxShape.rectangle,
+                            color: Colors.red.withOpacity(0.2),
+                          ),
+                          child: Icon(_previewIcon, size: cellInchSize * 8, color: Colors.red),
                         ),
-                        child: Icon(_previewIcon, size: cellInchSize * 8, color: Colors.red),
                       ),
                     ),
                   ),
@@ -306,16 +310,23 @@ class _GridWidgetState extends State<GridWidget> {
           ),
         );
 
+        // Wrap in RawKeyboardListener only (no Focus)
         return Center(
-          child: transformedGrid,
+          child: RawKeyboardListener(
+            focusNode: _focusNode,
+            autofocus: true,
+            onKey: (event) {
+              if (event is RawKeyEvent && event is! RawKeyUpEvent && event.logicalKey.keyLabel.toLowerCase() == 'r') {
+                setState(() {
+                  _previewRotation = (_previewRotation + 90) % 360;
+                });
+              }
+            },
+            child: transformedGrid,
+          ),
         );
       },
     );
-  }
-
-  @override
-  void dispose() {
-    super.dispose();
   }
 
   // Helper function for pointer-to-grid mapping using inverse of rendering transform

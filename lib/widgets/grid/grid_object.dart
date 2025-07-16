@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
-import '../models/grid_model.dart';
-import 'object_item.dart';
+import '../../models/grid_model.dart';
+import '../objects/object_item.dart';
 
 class GridObjectWidget extends StatelessWidget {
   final GridObject obj;
@@ -12,15 +12,6 @@ class GridObjectWidget extends StatelessWidget {
     required this.cellInchSize,
   }) : super(key: key);
 
-  /// Returns the total grid width in inches
-  static double getTotalGridWidthInches(Grid grid) {
-    return grid.widthInches;
-  }
-
-  /// Returns the total grid length in inches
-  static double getTotalGridLengthInches(Grid grid) {
-    return grid.lengthInches;
-  }
 
   @override
   Widget build(BuildContext context) {
@@ -41,7 +32,10 @@ class GridObjectWidget extends StatelessWidget {
           shape: BoxShape.rectangle,
           color: Colors.white.withOpacity(0.8),
         ),
-        child: Icon(obj.icon, size: objWidth * 0.6, color: Colors.black),
+        child: Transform.rotate(
+          angle: (obj.rotation % 360) * 3.1415926535897932 / 180.0,
+          child: Icon(obj.icon, size: objWidth * 0.6, color: Colors.black),
+        ),
       ),
     );
   }

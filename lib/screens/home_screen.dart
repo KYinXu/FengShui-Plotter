@@ -4,8 +4,8 @@ import 'package:window_manager/window_manager.dart';
 import '../constants/app_constants.dart';
 import '../models/grid_model.dart';
 import '../widgets/grid_input_form.dart';
-import '../widgets/grid_widget.dart';
-import '../widgets/object_palette.dart';
+import '../widgets/grid/grid_widget.dart';
+import '../widgets/objects/object_palette.dart';
 import '../widgets/rotation_control_widget.dart';
 import '../services/auto_placer_service.dart';
 
@@ -29,10 +29,17 @@ class _HomeScreenState extends State<HomeScreen> {
     });
   }
 
-  void _handleObjectDropped(int row, int col, String type, IconData icon) {
+  void _handleObjectDropped(int row, int col, String type, IconData icon, [int rotation = 0]) {
     setState(() {
-      _placedObjects.add(GridObject(type: type, row: row, col: col, icon: icon));
-      print('Placed objects: \\${_placedObjects.map((o) => 'type=\\${o.type}, row=\\${o.row}, col=\\${o.col}').toList()}');
+      final obj = GridObject(type: type, row: row, col: col, icon: icon, rotation: rotation);
+      _placedObjects.add(obj);
+      final poly = obj.getTransformedPolygon();
+      final minX = poly.map((p) => p.dx).reduce((a, b) => a < b ? a : b);
+      final minY = poly.map((p) => p.dy).reduce((a, b) => a < b ? a : b);
+      final maxX = poly.map((p) => p.dx).reduce((a, b) => a > b ? a : b);
+      final maxY = poly.map((p) => p.dy).reduce((a, b) => a > b ? a : b);
+      print('Placed object bounds: minX=$minX, minY=$minY, maxX=$maxX, maxY=$maxY');
+      print('Placed objects: \\${_placedObjects.map((o) => 'type=\${o.type}, row=\${o.row}, col=\${o.col}, rot=\${o.rotation}').toList()}');
     });
   }
 
@@ -115,7 +122,7 @@ class _HomeScreenState extends State<HomeScreen> {
                         grid: _currentGrid!,
                         rotationZ: _rotationZ,
                         objects: _placedObjects,
-                        onObjectDropped: _handleObjectDropped,
+                        onObjectDropped: (row, col, type, icon, [rotation = 0]) => _handleObjectDropped(row, col, type, icon, rotation),
                       ),
                     ),
                   ),

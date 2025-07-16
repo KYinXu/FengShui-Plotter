@@ -47,4 +47,26 @@ class ObjectItem extends StatelessWidget {
         return {'width': 1, 'height': 1};
     }
   }
+
+  /// Returns a polygon (list of points) for the object's shape, origin at (0,0)
+  static List<Offset> getObjectPolygon(String type) {
+    switch (type.toLowerCase()) {
+      case 'bed':
+        // Rectangle: (0,0), (width,0), (width,height), (0,height)
+        final dims = getObjectDimensions(type);
+        return [
+          Offset(0, 0),
+          Offset(dims['width']!.toDouble(), 0),
+          Offset(dims['width']!.toDouble(), dims['height']!.toDouble()),
+          Offset(0, dims['height']!.toDouble()),
+        ];
+      default:
+        return [
+          Offset(0, 0),
+          Offset(1, 0),
+          Offset(1, 1),
+          Offset(0, 1),
+        ];
+    }
+  }
 } 
