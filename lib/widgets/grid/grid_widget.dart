@@ -46,6 +46,15 @@ class GridWidgetState extends State<GridWidget> {
   int _dragRotation = 0; // Only for the current preview/drag
   int _searchToken = 0;
 
+  // Add fields to store last preview drag data and pointer offset
+  Map<String, dynamic>? _lastPreviewData;
+  Offset? _lastPreviewPointerOffset;
+  double? _lastPreviewOffsetX;
+  double? _lastPreviewOffsetY;
+  double? _lastPreviewGridWidth;
+  double? _lastPreviewGridHeightPx;
+  double? _lastPreviewCellInchSize;
+
 
 // Sets the state of the preview according to any new updates
   void _updatePreview(Offset? cell, String? type, IconData? icon, [int? rotation]) {
@@ -118,8 +127,16 @@ class GridWidgetState extends State<GridWidget> {
   }
 
   // Update preview/placement logic to use polygon system
-  // TODO: Bugs are associated with this file currently
+  // TODO: 180 degree rotations x < 0 and 270 degree rotations x < 0 y < 0 are bugged here, all others work and placements work
   void _handlePreviewMove(Map<String, dynamic> data, Offset pointerOffset, double offsetX, double offsetY, double gridWidth, double gridHeightPx, double cellInchSize) {
+    // Store last preview drag data and pointer offset for rotation snapping
+    _lastPreviewData = data;
+    _lastPreviewPointerOffset = pointerOffset;
+    _lastPreviewOffsetX = offsetX;
+    _lastPreviewOffsetY = offsetY;
+    _lastPreviewGridWidth = gridWidth;
+    _lastPreviewGridHeightPx = gridHeightPx;
+    _lastPreviewCellInchSize = cellInchSize;
     final int myToken = ++_searchToken;
     Future(() {
       if (data['type'] is! String || data['icon'] is! IconData) return;
@@ -139,15 +156,15 @@ class GridWidgetState extends State<GridWidget> {
         rotateY: widget.rotationY,
       );
       if (gridLocal != null) {
-        int col = (gridLocal.dx / cellInchSize).floor();
-        int row = (gridLocal.dy / cellInchSize).floor();
-        final poly = ObjectItem.getObjectPolygon(type);
-        Offset centerOffset = getCenteringOffset(poly);
-        int unclampedCol = col - centerOffset.dx.floor();
-        int unclampedRow = row - centerOffset.dy.floor();
+        double col = gridLocal.dx / cellInchSize;
+        double row = gridLocal.dy / cellInchSize;
+        final rotatedPoly = getTransformedPolygon(type, 0, 0, _dragRotation);
+        Offset centerOffset = getCenteringOffset(rotatedPoly);
+        double unclampedCol = col - centerOffset.dx;
+        double unclampedRow = row - centerOffset.dy;
         final gridW = widget.grid.widthInches.floor();
         final gridH = widget.grid.lengthInches.floor();
-        Offset clamped = clampPolygonToGrid(type, unclampedRow, unclampedCol, _dragRotation, gridW, gridH);
+        Offset clamped = clampPolygonToGrid(type, unclampedRow.floor(), unclampedCol.floor(), _dragRotation, gridW, gridH);
         final previewPoly = getTransformedPolygon(type, clamped.dy.toInt(), clamped.dx.toInt(), _dragRotation);
         if (!polygonInBounds(previewPoly, gridW, gridH)) {
           _updatePreview(null, null, null);
@@ -163,7 +180,9 @@ class GridWidgetState extends State<GridWidget> {
         if (snapped == null) {
           _updatePreview(null, null, null);
         } else {
-          _updatePreview(snapped, type, data['icon']);
+          // Pass the center position for the preview
+          final center = Offset(snapped.dx + centerOffset.dx, snapped.dy + centerOffset.dy);
+          _updatePreview(center, type, data['icon']);
         }
       } else {
         if (myToken != _searchToken) return;
@@ -282,25 +301,34 @@ class GridWidgetState extends State<GridWidget> {
                 ),
                 // Preview overlay
                 if (_previewCell != null && _previewType != null && _previewIcon != null)
-                  Positioned(
-                    left: _previewCell!.dx * cellInchSize,
-                    top: _previewCell!.dy * cellInchSize,
-                    child: Opacity(
-                      opacity: 0.5,
-                      child: Transform.rotate(
-                        angle: (_dragRotation % 360) * pi / 180.0,
-                        child: Container(
-                          width: cellInchSize * (ObjectItem.getObjectDimensions(_previewType!)['width'] ?? 1),
-                          height: cellInchSize * (ObjectItem.getObjectDimensions(_previewType!)['height'] ?? 1),
-                          decoration: BoxDecoration(
-                            border: Border.all(color: Colors.green, width: 3),
-                            shape: BoxShape.rectangle,
-                            color: Colors.red.withValues(alpha: 0.2),
+                  Builder(
+                    builder: (context) {
+                      final width = cellInchSize * (ObjectItem.getObjectDimensions(_previewType!)['width'] ?? 1);
+                      final height = cellInchSize * (ObjectItem.getObjectDimensions(_previewType!)['height'] ?? 1);
+                      return Positioned(
+                        left: _previewCell!.dx * cellInchSize,
+                        top: _previewCell!.dy * cellInchSize,
+                        child: Opacity(
+                          opacity: 0.5,
+                          child: Transform(
+                            alignment: Alignment.center,
+                            transform: Matrix4.identity()
+                              ..translate(-width / 2, -height / 2)
+                              ..rotateZ((_dragRotation % 360) * pi / 180.0),
+                            child: Container(
+                              width: width,
+                              height: height,
+                              decoration: BoxDecoration(
+                                border: Border.all(color: Colors.green, width: 3),
+                                shape: BoxShape.rectangle,
+                                color: Colors.red.withOpacity(0.2),
+                              ),
+                              child: Icon(_previewIcon, size: cellInchSize * 8, color: Colors.red),
+                            ),
                           ),
-                          child: Icon(_previewIcon, size: cellInchSize * 8, color: Colors.red),
                         ),
-                      ),
-                    ),
+                      );
+                    },
                   ),
                 // Placed objects
                 ...widget.objects.map((obj) => GridObjectWidget(obj: obj, cellInchSize: cellInchSize)),
@@ -351,6 +379,20 @@ class GridWidgetState extends State<GridWidget> {
                 setState(() {
                   _dragRotation = (_dragRotation + 90) % 360;
                 });
+                // If there is a preview in progress, re-trigger preview snapping after rotation
+                if (_lastPreviewData != null && _lastPreviewPointerOffset != null &&
+                    _lastPreviewOffsetX != null && _lastPreviewOffsetY != null &&
+                    _lastPreviewGridWidth != null && _lastPreviewGridHeightPx != null && _lastPreviewCellInchSize != null) {
+                  _handlePreviewMove(
+                    _lastPreviewData!,
+                    _lastPreviewPointerOffset!,
+                    _lastPreviewOffsetX!,
+                    _lastPreviewOffsetY!,
+                    _lastPreviewGridWidth!,
+                    _lastPreviewGridHeightPx!,
+                    _lastPreviewCellInchSize!
+                  );
+                }
               }
             },
             child: transformedGrid,

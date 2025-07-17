@@ -33,7 +33,7 @@ class GridObjectWidget extends StatelessWidget {
         decoration: BoxDecoration(
           border: Border.all(color: Colors.orange, width: 3),
           shape: BoxShape.rectangle,
-          color: Colors.white.withOpacity(0.8),
+          color: Colors.white.withValues(alpha: 0.8),
         ),
         child: Center(
           child: Icon(obj.icon, size: objWidth * 0.6, color: Colors.black),
