@@ -1,26 +1,31 @@
 import 'package:flutter/material.dart';
 import '../../models/grid_model.dart';
 import '../objects/object_item.dart';
+import 'dart:math';
 
 class GridObjectWidget extends StatelessWidget {
   final GridObject obj;
   final double cellInchSize;
 
   const GridObjectWidget({
-    Key? key,
+    super.key,
     required this.obj,
     required this.cellInchSize,
-  }) : super(key: key);
+  });
 
 
   @override
   Widget build(BuildContext context) {
-    //dimensions defined here with cellInchSize
-    final dims = ObjectItem.getObjectDimensions(obj.type);
-    final double left = obj.col * cellInchSize;
-    final double top = obj.row * cellInchSize;
-    final double objWidth = cellInchSize * dims['width']!;
-    final double objHeight = cellInchSize * dims['height']!;
+    // Use polygon geometry for rendering
+    final poly = obj.getTransformedPolygon();
+    final minX = poly.map((p) => p.dx).reduce((a, b) => a < b ? a : b);
+    final minY = poly.map((p) => p.dy).reduce((a, b) => a < b ? a : b);
+    final maxX = poly.map((p) => p.dx).reduce((a, b) => a > b ? a : b);
+    final maxY = poly.map((p) => p.dy).reduce((a, b) => a > b ? a : b);
+    final double left = minX * cellInchSize;
+    final double top = minY * cellInchSize;
+    final double objWidth = (maxX - minX) * cellInchSize;
+    final double objHeight = (maxY - minY) * cellInchSize;
     return Positioned(
       left: left,
       top: top,
@@ -32,8 +37,7 @@ class GridObjectWidget extends StatelessWidget {
           shape: BoxShape.rectangle,
           color: Colors.white.withValues(alpha: 0.8),
         ),
-        child: Transform.rotate(
-          angle: (obj.rotation % 360) * 3.1415926535897932 / 180.0,
+        child: Center(
           child: Icon(obj.icon, size: objWidth * 0.6, color: Colors.black),
         ),
       ),
