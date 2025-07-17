@@ -126,6 +126,14 @@ class GridWidgetState extends State<GridWidget> {
     return null;
   }
 
+  // Add a helper function to check if any part of the polygon is in bounds
+  bool polygonIntersectsGrid(List<Offset> poly, int gridW, int gridH) {
+    for (final p in poly) {
+      if (p.dx >= 0 && p.dy >= 0 && p.dx <= gridW && p.dy <= gridH) return true;
+    }
+    return false;
+  }
+
   // Update preview/placement logic to use polygon system
   // TODO: 180 degree rotations x < 0 and 270 degree rotations x < 0 y < 0 are bugged here, all others work and placements work
   void _handlePreviewMove(Map<String, dynamic> data, Offset pointerOffset, double offsetX, double offsetY, double gridWidth, double gridHeightPx, double cellInchSize) {
@@ -166,7 +174,7 @@ class GridWidgetState extends State<GridWidget> {
         final gridH = widget.grid.lengthInches.floor();
         Offset clamped = clampPolygonToGrid(type, unclampedRow.floor(), unclampedCol.floor(), _dragRotation, gridW, gridH);
         final previewPoly = getTransformedPolygon(type, clamped.dy.toInt(), clamped.dx.toInt(), _dragRotation);
-        if (!polygonInBounds(previewPoly, gridW, gridH)) {
+        if (!polygonIntersectsGrid(previewPoly, gridW, gridH)) {
           _updatePreview(null, null, null);
           return;
         }
