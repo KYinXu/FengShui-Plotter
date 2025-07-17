@@ -227,16 +227,17 @@ class GridWidgetState extends State<GridWidget> {
               return;
             }
             final String type = details.data['type'];
-            final poly = ObjectItem.getObjectPolygon(type);
-            int col = (gridLocal.dx / cellInchSize).floor();
-            int row = (gridLocal.dy / cellInchSize).floor();
-            Offset centerOffset = getCenteringOffset(poly);
-            int unclampedCol = col - centerOffset.dx.floor();
-            int unclampedRow = row - centerOffset.dy.floor();
+            // Use rotated polygon for centering offset (fixes placement for rotated objects)
+            final rotatedPoly = getTransformedPolygon(type, 0, 0, _dragRotation);
+            Offset centerOffset = getCenteringOffset(rotatedPoly);
+            double col = gridLocal.dx / cellInchSize;
+            double row = gridLocal.dy / cellInchSize;
+            double unclampedCol = col - centerOffset.dx;
+            double unclampedRow = row - centerOffset.dy;
             final gridW = widget.grid.widthInches.floor();
             final gridH = widget.grid.lengthInches.floor();
             // Clamp placement position to grid
-            Offset clamped = clampPolygonToGrid(type, unclampedRow, unclampedCol, _dragRotation, gridW, gridH);
+            Offset clamped = clampPolygonToGrid(type, unclampedRow.floor(), unclampedCol.floor(), _dragRotation, gridW, gridH);
             int snapCol = clamped.dx.toInt();
             int snapRow = clamped.dy.toInt();
             // If clamped position is not valid, snap to nearest open cell
