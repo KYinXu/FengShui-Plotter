@@ -44,7 +44,10 @@ class GridWidgetState extends State<GridWidget> {
   static const double _scale = 0.7;
 
   int _dragRotation = 0; // Only for the current preview/drag
+  int _searchToken = 0;
 
+
+// Sets the state of the preview according to any new updates
   void _updatePreview(Offset? cell, String? type, IconData? icon, [int? rotation]) {
     if (_previewCell == cell && _previewType == type && _previewIcon == icon && (rotation == null || _dragRotation == rotation)) {
       return;
@@ -57,7 +60,7 @@ class GridWidgetState extends State<GridWidget> {
     });
   }
 
-  int _searchToken = 0;
+
 
   // Polygon-based area occupied check
   // O(n) for number of objects
@@ -115,6 +118,7 @@ class GridWidgetState extends State<GridWidget> {
   }
 
   // Update preview/placement logic to use polygon system
+  // TODO: Bugs are associated with this file currently
   void _handlePreviewMove(Map<String, dynamic> data, Offset pointerOffset, double offsetX, double offsetY, double gridWidth, double gridHeightPx, double cellInchSize) {
     final int myToken = ++_searchToken;
     Future(() {
