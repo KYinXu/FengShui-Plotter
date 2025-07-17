@@ -82,7 +82,6 @@ class GridWidgetState extends State<GridWidget> {
       bool collision = false;
       for (final obj in widget.objects) {
         if (polygonsIntersect(poly, obj.getTransformedPolygon())) {
-          print("intersect");
           collision = true;
           break;
         }
