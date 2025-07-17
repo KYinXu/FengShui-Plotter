@@ -39,8 +39,10 @@ bool polygonInBounds(List<Offset> poly, int gridW, int gridH) {
   return true;
 }
 
-// Helper to get transformed polygon for preview
-// O(1)
+// Get the current bounding box for a given object
+// INPUT: [string, int, int, int] Object's properties (type, position, rotation)
+// OUTPUT: [List<Offset>] Final transformed polygon bounding object
+// // O(1)
 List<Offset> getTransformedPolygon(String type, int row, int col, int rotation) {
   final poly = ObjectItem.getObjectPolygon(type);
   final double angleRad = (rotation % 360) * pi / 180.0;
