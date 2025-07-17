@@ -21,6 +21,7 @@ class _HomeScreenState extends State<HomeScreen> {
   double _rotationZ = -0.7; // Initial Y rotation for the grid
   List<GridObject> _placedObjects = [];
   bool _isAutoPlacing = false;
+  final GlobalKey<GridWidgetState> _gridWidgetKey = GlobalKey<GridWidgetState>();
 
   void _onGridCreated(Grid grid) {
     setState(() {
@@ -64,7 +65,10 @@ class _HomeScreenState extends State<HomeScreen> {
               const ObjectPalette(),
               Padding(
                 padding: const EdgeInsets.symmetric(vertical: 8.0),
-                child: ElevatedButton.icon(
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    ElevatedButton.icon(
                   icon: const Icon(Icons.auto_fix_high),
                   label: const Text('Auto Place Objects'),
                   onPressed: () async {
@@ -94,6 +98,21 @@ class _HomeScreenState extends State<HomeScreen> {
                       setState(() => _isAutoPlacing = false);
                     }
                   },
+                    ),
+                    const SizedBox(width: 12),
+                    ElevatedButton.icon(
+                      icon: const Icon(Icons.clear),
+                      label: const Text('Clear Grid'),
+                      onPressed: () {
+                        setState(() {
+                          _placedObjects = [];
+                        });
+                        WidgetsBinding.instance.addPostFrameCallback((_) {
+                          _gridWidgetKey.currentState?.resetPreviewRotation();
+                        });
+                      },
+                    ),
+                  ],
                 ),
               ),
               if (_isAutoPlacing)

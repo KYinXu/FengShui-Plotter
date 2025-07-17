@@ -29,32 +29,31 @@ class GridWidget extends StatefulWidget {
   });
 
   @override
-  State<GridWidget> createState() => _GridWidgetState();
+  State<GridWidget> createState() => GridWidgetState();
 }
 
-class _GridWidgetState extends State<GridWidget> {
+class GridWidgetState extends State<GridWidget> {
   final snappingRadius = 20;
   Offset? _previewCell;
   String? _previewType;
   IconData? _previewIcon;
-  Offset? _snappedPreviewCell;
-  int _previewRotation = 0; // 0, 90, 180, 270
   final FocusNode _focusNode = FocusNode();
 
   // Constants for 3D transformation
-  static const double _additionalRotationX = 0.3;
+  //static const double _additionalRotationX = 0.3;
   static const double _scale = 0.7;
 
+  int _dragRotation = 0; // Only for the current preview/drag
+
   void _updatePreview(Offset? cell, String? type, IconData? icon, [int? rotation]) {
-    if (_previewCell == cell && _previewType == type && _previewIcon == icon && (rotation == null || _previewRotation == rotation)) {
+    if (_previewCell == cell && _previewType == type && _previewIcon == icon && (rotation == null || _dragRotation == rotation)) {
       return;
     }
-    debugPrint('Updating preview: cell= [32m$cell [0m, type= [32m$type [0m, icon= [32m$icon [0m, rot= [32m${rotation ?? _previewRotation} [0m');
     setState(() {
       _previewCell = cell;
       _previewType = type;
       _previewIcon = icon;
-      if (rotation != null) _previewRotation = rotation;
+      if (rotation != null) _dragRotation = rotation;
     });
   }
 
@@ -74,9 +73,8 @@ class _GridWidgetState extends State<GridWidget> {
     return false;
   }
 
-  // Polygon-based nearest open cell
-  // 
-  Offset? findNearestOpenCell(int startRow, int startCol, String type, int rotation, {int radius = 8}) {
+  // Find nearest open cell
+  Offset? findNearestOpenCell(int startRow, int startCol, String type, int rotation, int radius) {
     final gridW = widget.grid.widthInches.floor();
     final gridH = widget.grid.lengthInches.floor();
     // Try the initial position first
@@ -90,12 +88,8 @@ class _GridWidgetState extends State<GridWidget> {
         }
       }
       if (!collision) return Offset(startCol.toDouble(), startRow.toDouble());
-    //for out of bounds, attempt to snap inside
-    // if(!polygonInBounds(poly, gridW, gridH)) {
-    //   return null;
-    // }
+
     // Spiral search for nearest open cell
-    print("Snapping to a new point");
     for (int dist = 1; dist <= radius; dist++) {
       for (int dRow = -dist; dRow <= dist; dRow++) {
         int dCol = dist - dRow.abs();
@@ -127,7 +121,6 @@ class _GridWidgetState extends State<GridWidget> {
     Future(() {
       if (data['type'] is! String || data['icon'] is! IconData) return;
       final String type = data['type'];
-      final dims = ObjectItem.getObjectDimensions(type);
       final RenderBox? box = context.findRenderObject() as RenderBox?;
       if (box == null) return;
       final Offset local = box.globalToLocal(pointerOffset);
@@ -146,43 +139,40 @@ class _GridWidgetState extends State<GridWidget> {
         int col = (gridLocal.dx / cellInchSize).floor();
         int row = (gridLocal.dy / cellInchSize).floor();
         final poly = ObjectItem.getObjectPolygon(type);
-        // Use centering offset for both preview and placement
         Offset centerOffset = getCenteringOffset(poly);
         int unclampedCol = col - centerOffset.dx.floor();
         int unclampedRow = row - centerOffset.dy.floor();
         final gridW = widget.grid.widthInches.floor();
         final gridH = widget.grid.lengthInches.floor();
-        // Clamp preview position to grid
-        Offset clamped = clampPolygonToGrid(type, unclampedRow, unclampedCol, _previewRotation, gridW, gridH);
-        // For preview: check if clamped preview polygon is in bounds
-        final previewPoly = getTransformedPolygon(type, clamped.dy.toInt(), clamped.dx.toInt(), _previewRotation);
+        Offset clamped = clampPolygonToGrid(type, unclampedRow, unclampedCol, _dragRotation, gridW, gridH);
+        final previewPoly = getTransformedPolygon(type, clamped.dy.toInt(), clamped.dx.toInt(), _dragRotation);
         if (!polygonInBounds(previewPoly, gridW, gridH)) {
           _updatePreview(null, null, null);
-          _snappedPreviewCell = null;
           return;
         }
-        // For snapping/placement, use clamped position
         int snapCol = clamped.dx.toInt();
         int snapRow = clamped.dy.toInt();
-        // Check if initial snapped position is valid
-        bool valid = !isAreaOccupied(snapRow, snapCol, type, _previewRotation);
+        bool valid = !isAreaOccupied(snapRow, snapCol, type, _dragRotation);
         Offset? snapped = valid
           ? Offset(snapCol.toDouble(), snapRow.toDouble())
-          : findNearestOpenCell(snapRow, snapCol, type, _previewRotation, radius: snappingRadius);
-        if (myToken != _searchToken) return; // Outdated, ignore result
+          : findNearestOpenCell(snapRow, snapCol, type, _dragRotation, snappingRadius);
+        if (myToken != _searchToken) return;
         if (snapped == null) {
           _updatePreview(null, null, null);
-          _snappedPreviewCell = null;
         } else {
-          // Show preview at the snapped position (centered visually, but only once)
           _updatePreview(snapped, type, data['icon']);
-          _snappedPreviewCell = snapped;
         }
       } else {
         if (myToken != _searchToken) return;
         _updatePreview(null, null, null);
-        _snappedPreviewCell = null;
       }
+    });
+  }
+
+  void resetPreviewRotation() {
+    setState(() {
+      _dragRotation = 0;
+      _updatePreview(null, null, null);
     });
   }
 
@@ -243,17 +233,16 @@ class _GridWidgetState extends State<GridWidget> {
             final gridW = widget.grid.widthInches.floor();
             final gridH = widget.grid.lengthInches.floor();
             // Clamp placement position to grid
-            Offset clamped = clampPolygonToGrid(type, unclampedRow, unclampedCol, _previewRotation, gridW, gridH);
+            Offset clamped = clampPolygonToGrid(type, unclampedRow, unclampedCol, _dragRotation, gridW, gridH);
             int snapCol = clamped.dx.toInt();
             int snapRow = clamped.dy.toInt();
             // If clamped position is not valid, snap to nearest open cell
-            bool valid = !isAreaOccupied(snapRow, snapCol, type, _previewRotation);
+            bool valid = !isAreaOccupied(snapRow, snapCol, type, _dragRotation);
             Offset? snapped = valid
               ? Offset(snapCol.toDouble(), snapRow.toDouble())
-              : findNearestOpenCell(snapRow, snapCol, type, _previewRotation, radius: snappingRadius);
+              : findNearestOpenCell(snapRow, snapCol, type, _dragRotation, snappingRadius);
             if (snapped == null) {
               _updatePreview(null, null, null);
-              _snappedPreviewCell = null;
               return;
             }
             snapRow = snapped.dy.toInt();
@@ -261,9 +250,10 @@ class _GridWidgetState extends State<GridWidget> {
             if (widget.onObjectDropped != null &&
                 details.data['type'] is String &&
                 details.data['icon'] is IconData) {
-              widget.onObjectDropped!(snapRow, snapCol, details.data['type'], details.data['icon'], _previewRotation);
+              widget.onObjectDropped!(snapRow, snapCol, details.data['type'], details.data['icon'], _dragRotation);
             }
             _updatePreview(null, null, null);
+            _dragRotation = 0;
           },
           onMove: (details) {
             // Use async+token approach for preview update
@@ -294,7 +284,7 @@ class _GridWidgetState extends State<GridWidget> {
                     child: Opacity(
                       opacity: 0.5,
                       child: Transform.rotate(
-                        angle: (_previewRotation % 360) * 3.1415926535897932 / 180.0,
+                        angle: (_dragRotation % 360) * pi / 180.0,
                         child: Container(
                           width: cellInchSize * (ObjectItem.getObjectDimensions(_previewType!)['width'] ?? 1),
                           height: cellInchSize * (ObjectItem.getObjectDimensions(_previewType!)['height'] ?? 1),
@@ -353,9 +343,9 @@ class _GridWidgetState extends State<GridWidget> {
             focusNode: _focusNode,
             autofocus: true,
             onKeyEvent: (event) {
-              if (event is! KeyUpEvent && event.logicalKey.keyLabel.toLowerCase() == 'r') {
+              if (event is KeyDownEvent && event.logicalKey.keyLabel.toLowerCase() == 'r') {
                 setState(() {
-                  _previewRotation = (_previewRotation + 90) % 360;
+                  _dragRotation = (_dragRotation + 90) % 360;
                 });
               }
             },
@@ -413,15 +403,6 @@ class CellPainter extends CustomPainter {
 
   @override
   void paint(Canvas canvas, Size size) {
-    const thinBorder = AppConstants.thinBorderWidth;
-    const thickBorder = AppConstants.thickBorderWidth;
-    final thinPaint = Paint()
-      ..color = gridBorderColor
-      ..strokeWidth = thinBorder;
-    final thickPaint = Paint()
-      ..color = majorGridBorderColor
-      ..strokeWidth = thickBorder;
-
     // Draw cell background
     double cellWidth = size.width;
     double cellHeight = size.height;
@@ -433,7 +414,7 @@ class CellPainter extends CustomPainter {
     // Draw borders for the cell
     final borderPaint = Paint()
       ..color = gridBorderColor
-      ..strokeWidth = thinBorder
+      ..strokeWidth = AppConstants.thinBorderWidth
       ..style = PaintingStyle.stroke;
     // Top border
     canvas.drawLine(const Offset(0, 0), Offset(cellWidth, 0), borderPaint);
@@ -481,15 +462,6 @@ class GridAreaPainter extends CustomPainter {
 
   @override
   void paint(Canvas canvas, Size size) {
-    const thinBorder = AppConstants.thinBorderWidth;
-    const thickBorder = AppConstants.thickBorderWidth;
-    final thinPaint = Paint()
-      ..color = gridBorderColor
-      ..strokeWidth = thinBorder;
-    final thickPaint = Paint()
-      ..color = majorGridBorderColor
-      ..strokeWidth = thickBorder;
-    final backgroundPaint = Paint()..color = gridCellColor;
 
     // Paint for faint inch dividers
     final inchDividerPaint = Paint()

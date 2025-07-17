@@ -30,7 +30,7 @@ class GridObjectWidget extends StatelessWidget {
         decoration: BoxDecoration(
           border: Border.all(color: Colors.orange, width: 3),
           shape: BoxShape.rectangle,
-          color: Colors.white.withOpacity(0.8),
+          color: Colors.white.withValues(alpha: 0.8),
         ),
         child: Transform.rotate(
           angle: (obj.rotation % 360) * 3.1415926535897932 / 180.0,

@@ -6,7 +6,7 @@ import 'dart:math';
 // O(n + m): where n and m are the sides of each polygon ???
 // For now O(1)
 bool polygonsIntersect(List<Offset> polyA, List<Offset> polyB) {
-  bool _separatingAxis(List<Offset> poly1, List<Offset> poly2) {
+  bool separatingAxis(List<Offset> poly1, List<Offset> poly2) {
     for (int i = 0; i < poly1.length; i++) {
       final p1 = poly1[i];
       final p2 = poly1[(i + 1) % poly1.length];
@@ -27,7 +27,7 @@ bool polygonsIntersect(List<Offset> polyA, List<Offset> polyB) {
     }
     return true;
   }
-  return _separatingAxis(polyA, polyB) && _separatingAxis(polyB, polyA);
+  return separatingAxis(polyA, polyB) && separatingAxis(polyB, polyA);
 }
 
 // Helper: check if polygon is within grid bounds
@@ -43,7 +43,7 @@ bool polygonInBounds(List<Offset> poly, int gridW, int gridH) {
 // O(1)
 List<Offset> getTransformedPolygon(String type, int row, int col, int rotation) {
   final poly = ObjectItem.getObjectPolygon(type);
-  final double angleRad = (rotation % 360) * 3.1415926535897932 / 180.0;
+  final double angleRad = (rotation % 360) * pi / 180.0;
   final double cosA = cos(angleRad);
   final double sinA = sin(angleRad);
   return poly.map((p) {
