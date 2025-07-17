@@ -16,6 +16,10 @@ class ObjectPalette extends StatelessWidget {
             label: 'Bed',
             icon: Icons.bed,
           ),
+          ObjectItem(
+            label: 'Desk',
+            icon: Icons.event_seat, // Chose a desk-like icon
+          ),
         ],
       ),
     );

@@ -43,6 +43,8 @@ class ObjectItem extends StatelessWidget {
     switch (type.toLowerCase()) {
       case 'bed':
         return {'width': 80, 'height': 60};
+      case 'desk':
+        return {'width': 48, 'height': 24};
       default:
         return {'width': 1, 'height': 1};
     }
@@ -53,6 +55,14 @@ class ObjectItem extends StatelessWidget {
     switch (type.toLowerCase()) {
       case 'bed':
         // Rectangle: (0,0), (width,0), (width,height), (0,height)
+        final dims = getObjectDimensions(type);
+        return [
+          const Offset(0, 0),
+          Offset(dims['width']!.toDouble(), 0),
+          Offset(dims['width']!.toDouble(), dims['height']!.toDouble()),
+          Offset(0, dims['height']!.toDouble()),
+        ];
+      case 'desk':
         final dims = getObjectDimensions(type);
         return [
           const Offset(0, 0),
