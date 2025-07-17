@@ -59,37 +59,43 @@ List<Offset> getTransformedPolygon(String type, int row, int col, int rotation) 
 
 // Helper: get preview grid position so the polygon is centered at the pointer
 Offset getPreviewGridPosition(int col, int row, List<Offset> poly) {
-  double minX = poly.map((p) => p.dx).reduce((a, b) => a < b ? a : b);
-  double minY = poly.map((p) => p.dy).reduce((a, b) => a < b ? a : b);
-  double maxX = poly.map((p) => p.dx).reduce((a, b) => a > b ? a : b);
-  double maxY = poly.map((p) => p.dy).reduce((a, b) => a > b ? a : b);
-  double centerX = (minX + maxX) / 2;
-  double centerY = (minY + maxY) / 2;
+  final bounds = getPolygonBounds(poly);
+  double centerX = (bounds['minX']! + bounds['maxX']!) / 2;
+  double centerY = (bounds['minY']! + bounds['maxY']!) / 2;
   return Offset((col - centerX).toDouble(), (row - centerY).toDouble());
 }
 
 // Helper: get centering offset (center of bounding box) for a polygon
 Offset getCenteringOffset(List<Offset> poly) {
+  final bounds = getPolygonBounds(poly);
+  double centerX = (bounds['minX']! + bounds['maxX']!) / 2;
+  double centerY = (bounds['minY']! + bounds['maxY']!) / 2;
+  return Offset(centerX, centerY);
+}
+
+// Helper: get bounding box of a polygon
+Map<String, double> getPolygonBounds(List<Offset> poly) {
   double minX = poly.map((p) => p.dx).reduce((a, b) => a < b ? a : b);
   double minY = poly.map((p) => p.dy).reduce((a, b) => a < b ? a : b);
   double maxX = poly.map((p) => p.dx).reduce((a, b) => a > b ? a : b);
   double maxY = poly.map((p) => p.dy).reduce((a, b) => a > b ? a : b);
-  double centerX = (minX + maxX) / 2;
-  double centerY = (minY + maxY) / 2;
-  return Offset(centerX, centerY);
+  return {'minX': minX, 'minY': minY, 'maxX': maxX, 'maxY': maxY};
 }
 
 // Helper: clamp a polygon's position so it stays fully in grid bounds
 Offset clampPolygonToGrid(String type, int row, int col, int rotation, int gridW, int gridH) {
+
+  //polygon at proper position
   final poly = getTransformedPolygon(type, row, col, rotation);
-  double minX = poly.map((p) => p.dx).reduce((a, b) => a < b ? a : b);
-  double minY = poly.map((p) => p.dy).reduce((a, b) => a < b ? a : b);
-  double maxX = poly.map((p) => p.dx).reduce((a, b) => a > b ? a : b);
-  double maxY = poly.map((p) => p.dy).reduce((a, b) => a > b ? a : b);
+
+  //Get bounding vars
+  final bounds = getPolygonBounds(poly);
+
+  //Check if out of bounds, and shift by a constant amount along x and y until in bounds
   int shiftX = 0, shiftY = 0;
-  if (minX < 0) shiftX = -minX.ceil();
-  if (maxX > gridW) shiftX = -(maxX - gridW).ceil();
-  if (minY < 0) shiftY = -minY.ceil();
-  if (maxY > gridH) shiftY = -(maxY - gridH).ceil();
+  if (bounds['minX']! < 0) shiftX = -bounds['minX']!.ceil();
+  if (bounds['maxX']! > gridW) shiftX = -(bounds['maxX']! - gridW).ceil();
+  if (bounds['minY']! < 0) shiftY = -bounds['minY']!.ceil();
+  if (bounds['maxY']! > gridH) shiftY = -(bounds['maxY']! - gridH).ceil();
   return Offset((col + shiftX).toDouble(), (row + shiftY).toDouble());
 }

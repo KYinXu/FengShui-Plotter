@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import '../../models/grid_model.dart';
 import '../objects/object_item.dart';
 import 'dart:math';
+import 'grid_helpers.dart';
 
 class GridObjectWidget extends StatelessWidget {
   final GridObject obj;
@@ -18,14 +19,11 @@ class GridObjectWidget extends StatelessWidget {
   Widget build(BuildContext context) {
     // Use polygon geometry for rendering
     final poly = obj.getTransformedPolygon();
-    final minX = poly.map((p) => p.dx).reduce((a, b) => a < b ? a : b);
-    final minY = poly.map((p) => p.dy).reduce((a, b) => a < b ? a : b);
-    final maxX = poly.map((p) => p.dx).reduce((a, b) => a > b ? a : b);
-    final maxY = poly.map((p) => p.dy).reduce((a, b) => a > b ? a : b);
-    final double left = minX * cellInchSize;
-    final double top = minY * cellInchSize;
-    final double objWidth = (maxX - minX) * cellInchSize;
-    final double objHeight = (maxY - minY) * cellInchSize;
+    final bounds = getPolygonBounds(poly);
+    final double left = bounds['minX']! * cellInchSize;
+    final double top = bounds['minY']! * cellInchSize;
+    final double objWidth = (bounds['maxX']! - bounds['minX']!) * cellInchSize;
+    final double objHeight = (bounds['maxY']! - bounds['minY']!) * cellInchSize;
     return Positioned(
       left: left,
       top: top,
@@ -35,7 +33,7 @@ class GridObjectWidget extends StatelessWidget {
         decoration: BoxDecoration(
           border: Border.all(color: Colors.orange, width: 3),
           shape: BoxShape.rectangle,
-          color: Colors.white.withValues(alpha: 0.8),
+          color: Colors.white.withOpacity(0.8),
         ),
         child: Center(
           child: Icon(obj.icon, size: objWidth * 0.6, color: Colors.black),
