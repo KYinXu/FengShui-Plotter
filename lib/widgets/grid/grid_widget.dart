@@ -258,13 +258,6 @@ class _GridWidgetState extends State<GridWidget> {
             }
             snapRow = snapped.dy.toInt();
             snapCol = snapped.dx.toInt();
-            // Print bounds of placement location
-            final placedPoly = getTransformedPolygon(type, snapRow, snapCol, _previewRotation);
-            final pMinX = placedPoly.map((p) => p.dx).reduce((a, b) => a < b ? a : b);
-            final pMinY = placedPoly.map((p) => p.dy).reduce((a, b) => a < b ? a : b);
-            final pMaxX = placedPoly.map((p) => p.dx).reduce((a, b) => a > b ? a : b);
-            final pMaxY = placedPoly.map((p) => p.dy).reduce((a, b) => a > b ? a : b);
-            print('Placement bounds: minX=$pMinX, minY=$pMinY, maxX=$pMaxX, maxY=$pMaxY');
             if (widget.onObjectDropped != null &&
                 details.data['type'] is String &&
                 details.data['icon'] is IconData) {
@@ -308,7 +301,7 @@ class _GridWidgetState extends State<GridWidget> {
                           decoration: BoxDecoration(
                             border: Border.all(color: Colors.green, width: 3),
                             shape: BoxShape.rectangle,
-                            color: Colors.red.withOpacity(0.2),
+                            color: Colors.red.withValues(alpha: 0.2),
                           ),
                           child: Icon(_previewIcon, size: cellInchSize * 8, color: Colors.red),
                         ),
@@ -356,11 +349,11 @@ class _GridWidgetState extends State<GridWidget> {
 
         // Wrap in RawKeyboardListener only (no Focus)
         return Center(
-          child: RawKeyboardListener(
+          child: KeyboardListener(
             focusNode: _focusNode,
             autofocus: true,
-            onKey: (event) {
-              if (event is RawKeyEvent && event is! RawKeyUpEvent && event.logicalKey.keyLabel.toLowerCase() == 'r') {
+            onKeyEvent: (event) {
+              if (event is! KeyUpEvent && event.logicalKey.keyLabel.toLowerCase() == 'r') {
                 setState(() {
                   _previewRotation = (_previewRotation + 90) % 360;
                 });
