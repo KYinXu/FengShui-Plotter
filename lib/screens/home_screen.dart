@@ -8,6 +8,7 @@ import '../widgets/grid/grid_widget.dart';
 import '../widgets/objects/object_palette.dart';
 import '../widgets/rotation_control_widget.dart';
 import '../services/auto_placer_service.dart';
+import '../widgets/objects/object_item.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -20,17 +21,30 @@ class _HomeScreenState extends State<HomeScreen> {
   Grid? _currentGrid;
   double _rotationZ = -0.7; // Initial Y rotation for the grid
   List<GridObject> _placedObjects = [];
+  List<BoundaryElement> _boundaries = [];
   bool _isAutoPlacing = false;
-  final GlobalKey<GridWidgetState> _gridWidgetKey = GlobalKey<GridWidgetState>();
+  Key _gridWidgetKey = UniqueKey();
+
+  // Boundary mode: 'none', 'door', 'window'
+  String _boundaryMode = 'none';
 
   void _onGridCreated(Grid grid) {
     setState(() {
       _currentGrid = grid;
       _placedObjects = [];
+      _boundaries = [];
+      _gridWidgetKey = UniqueKey(); // Force GridWidget to rebuild
     });
   }
 
   void _handleObjectDropped(int row, int col, String type, IconData icon, [int rotation = 0]) {
+    // Prevent placement if object is larger than grid
+    final gridW = _currentGrid?.widthInches.floor() ?? 0;
+    final gridH = _currentGrid?.lengthInches.floor() ?? 0;
+    final dims = ObjectItem.getObjectDimensions(type);
+    final objW = dims['width'] ?? 1;
+    final objH = dims['height'] ?? 1;
+    if (objW > gridW || objH > gridH) return;
     setState(() {
       final obj = GridObject(type: type, row: row, col: col, icon: icon, rotation: rotation);
       _placedObjects.add(obj);
@@ -47,6 +61,20 @@ class _HomeScreenState extends State<HomeScreen> {
   void _onRotationChanged(double rotation) {
     setState(() {
       _rotationZ = rotation;
+    });
+  }
+
+  void _handleAddBoundary(BoundaryElement boundary) {
+    setState(() {
+      if (!_boundaries.contains(boundary)) {
+        _boundaries.add(boundary);
+      }
+    });
+  }
+
+  void _handleRemoveBoundary(BoundaryElement boundary) {
+    setState(() {
+      _boundaries.remove(boundary);
     });
   }
 
@@ -69,35 +97,35 @@ class _HomeScreenState extends State<HomeScreen> {
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
                     ElevatedButton.icon(
-                  icon: const Icon(Icons.auto_fix_high),
-                  label: const Text('Auto Place Objects'),
-                  onPressed: () async {
-                    if (_currentGrid == null) return;
-                    setState(() => _isAutoPlacing = true);
-                    try {
-                      // Prepare grid data for the Python service
-                      final gridData = {
-                        'length': _currentGrid!.lengthInches,
-                        'width': _currentGrid!.widthInches,
-                        // Add more fields if needed
-                      };
-                      final placements = await AutoPlacerService.getPlacements(gridData);
-                      setState(() {
-                        _placedObjects = placements.map((p) => GridObject(
-                          type: p['type'] ?? 'Unknown',
-                          row: p['y'] ?? 0,
-                          col: p['x'] ?? 0,
-                          icon: Icons.auto_awesome, // Use a default icon or map type to icon
-                        )).toList();
-                      });
-                    } catch (e) {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        SnackBar(content: Text('Auto placement failed: $e')),
-                      );
-                    } finally {
-                      setState(() => _isAutoPlacing = false);
-                    }
-                  },
+                      icon: const Icon(Icons.auto_fix_high),
+                      label: const Text('Auto Place Objects'),
+                      onPressed: () async {
+                        if (_currentGrid == null) return;
+                        setState(() => _isAutoPlacing = true);
+                        try {
+                          // Prepare grid data for the Python service
+                          final gridData = {
+                            'length': _currentGrid!.lengthInches,
+                            'width': _currentGrid!.widthInches,
+                            // Add more fields if needed
+                          };
+                          final placements = await AutoPlacerService.getPlacements(gridData);
+                          setState(() {
+                            _placedObjects = placements.map((p) => GridObject(
+                              type: p['type'] ?? 'Unknown',
+                              row: p['y'] ?? 0,
+                              col: p['x'] ?? 0,
+                              icon: Icons.auto_awesome, // Use a default icon or map type to icon
+                            )).toList();
+                          });
+                        } catch (e) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(content: Text('Auto placement failed: $e')),
+                          );
+                        } finally {
+                          setState(() => _isAutoPlacing = false);
+                        }
+                      },
                     ),
                     const SizedBox(width: 12),
                     ElevatedButton.icon(
@@ -106,11 +134,40 @@ class _HomeScreenState extends State<HomeScreen> {
                       onPressed: () {
                         setState(() {
                           _placedObjects = [];
-                        });
-                        WidgetsBinding.instance.addPostFrameCallback((_) {
-                          _gridWidgetKey.currentState?.resetPreviewRotation();
+                          _boundaries = [];
+                          _currentGrid = _currentGrid?.copyWith(objects: [], boundaries: []);
+                          _gridWidgetKey = UniqueKey(); // Force GridWidget to rebuild
                         });
                       },
+                    ),
+                    const SizedBox(width: 12),
+                    ToggleButtons(
+                      isSelected: [
+                        _boundaryMode == 'none',
+                        _boundaryMode == 'door',
+                        _boundaryMode == 'window',
+                      ],
+                      onPressed: (int index) {
+                        setState(() {
+                          if (index == 0) _boundaryMode = 'none';
+                          if (index == 1) _boundaryMode = 'door';
+                          if (index == 2) _boundaryMode = 'window';
+                        });
+                      },
+                      children: const [
+                        Padding(
+                          padding: EdgeInsets.symmetric(horizontal: 8.0),
+                          child: Text('Normal'),
+                        ),
+                        Padding(
+                          padding: EdgeInsets.symmetric(horizontal: 8.0),
+                          child: Text('Add Door'),
+                        ),
+                        Padding(
+                          padding: EdgeInsets.symmetric(horizontal: 8.0),
+                          child: Text('Add Window'),
+                        ),
+                      ],
                     ),
                   ],
                 ),
@@ -138,10 +195,14 @@ class _HomeScreenState extends State<HomeScreen> {
                       ),
                       padding: const EdgeInsets.all(12),
                       child: GridWidget(
-                        grid: _currentGrid!,
+                        key: _gridWidgetKey,
+                        grid: _currentGrid!.copyWith(boundaries: _boundaries),
                         rotationZ: _rotationZ,
                         objects: _placedObjects,
                         onObjectDropped: (row, col, type, icon, [rotation = 0]) => _handleObjectDropped(row, col, type, icon, rotation),
+                        boundaryMode: _boundaryMode,
+                        onAddBoundary: _handleAddBoundary,
+                        onRemoveBoundary: _handleRemoveBoundary,
                       ),
                     ),
                   ),

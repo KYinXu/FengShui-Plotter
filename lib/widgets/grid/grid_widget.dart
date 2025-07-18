@@ -16,7 +16,9 @@ class GridWidget extends StatefulWidget {
   final double rotationZ;
   final List<GridObject> objects;
   final void Function(int row, int col, String type, IconData icon, [int rotation])? onObjectDropped;
-  
+  final String boundaryMode; // 'none', 'door', 'window'
+  final void Function(BoundaryElement boundary)? onAddBoundary;
+  final void Function(BoundaryElement boundary)? onRemoveBoundary;
 
   const GridWidget({
     super.key,
@@ -26,6 +28,9 @@ class GridWidget extends StatefulWidget {
     this.rotationZ = 0.0,
     this.objects = const [],
     this.onObjectDropped,
+    this.boundaryMode = 'none',
+    this.onAddBoundary,
+    this.onRemoveBoundary,
   });
 
   @override
@@ -149,6 +154,16 @@ class GridWidgetState extends State<GridWidget> {
     Future(() {
       if (data['type'] is! String || data['icon'] is! IconData) return;
       final String type = data['type'];
+      // Prevent preview if object is larger than grid
+      final gridW = widget.grid.widthInches.floor();
+      final gridH = widget.grid.lengthInches.floor();
+      final dims = ObjectItem.getObjectDimensions(type);
+      final objW = dims['width'] ?? 1;
+      final objH = dims['height'] ?? 1;
+      if (objW > gridW || objH > gridH) {
+        _updatePreview(null, null, null);
+        return;
+      }
       final RenderBox? box = context.findRenderObject() as RenderBox?;
       if (box == null) return;
       final Offset local = box.globalToLocal(pointerOffset);
@@ -233,7 +248,8 @@ class GridWidgetState extends State<GridWidget> {
         // Calculate centering offset
         final double offsetX = (constraints.maxWidth - gridWidth) / 2;
         final double offsetY = (constraints.maxHeight - gridHeightPx) / 2;
-        final gridContent = DragTarget<Map<String, dynamic>>(
+
+        Widget gridContent = DragTarget<Map<String, dynamic>>(
           onAcceptWithDetails: (details) {
             final RenderBox box = context.findRenderObject() as RenderBox;
             final Offset local = box.globalToLocal(details.offset);
@@ -345,6 +361,101 @@ class GridWidgetState extends State<GridWidget> {
           },
         );
 
+        // Overlay GestureDetector for edge clicks in boundary mode
+        if (widget.boundaryMode != 'none') {
+          gridContent = GestureDetector(
+            behavior: HitTestBehavior.translucent,
+            onTapDown: (details) {
+              final RenderBox box = context.findRenderObject() as RenderBox;
+              final Offset local = box.globalToLocal(details.globalPosition);
+              final Offset gridLocal = local - Offset(offsetX, offsetY);
+              // Map to cell and edge
+              final double col = gridLocal.dx / cellInchSize;
+              final double row = gridLocal.dy / cellInchSize;
+              final int cellCol = col.floor();
+              final int cellRow = row.floor();
+              final double dx = col - cellCol;
+              final double dy = row - cellRow;
+              // Find nearest edge
+              double minDist = 1.0;
+              String? side;
+              if (dx < 0.2) { minDist = dx; side = 'left'; }
+              if (1 - dx < minDist) { minDist = 1 - dx; side = 'right'; }
+              if (dy < minDist) { minDist = dy; side = 'top'; }
+              if (1 - dy < minDist) { minDist = 1 - dy; side = 'bottom'; }
+              // Only allow if close enough to an edge
+              if (side != null && minDist < 0.2) {
+                final maxRow = widget.grid.lengthInches.floor();
+                final maxCol = widget.grid.widthInches.floor();
+                int span = 12; // 12 grid spaces (1 foot)
+                // Prevent placement if grid is too small
+                if ((side == 'top' || side == 'bottom') && maxCol < span) return;
+                if ((side == 'left' || side == 'right') && maxRow < span) return;
+                bool isOuter = false;
+                int startRow = cellRow;
+                int startCol = cellCol;
+                // Adjust start so the 12-segment fits within the grid
+                switch (side) {
+                  case 'top':
+                    isOuter = cellRow == 0;
+                    if (cellCol + span > maxCol) startCol = maxCol - span;
+                    break;
+                  case 'bottom':
+                    isOuter = cellRow == maxRow - 1;
+                    if (cellCol + span > maxCol) startCol = maxCol - span;
+                    break;
+                  case 'left':
+                    isOuter = cellCol == 0;
+                    if (cellRow + span > maxRow) startRow = maxRow - span;
+                    break;
+                  case 'right':
+                    isOuter = cellCol == maxCol - 1;
+                    if (cellRow + span > maxRow) startRow = maxRow - span;
+                    break;
+                }
+                if (!isOuter) return;
+                final type = widget.boundaryMode == 'door' ? 'door' : 'window';
+                // Build the 12-segment boundary
+                List<BoundaryElement> segment = [];
+                for (int i = 0; i < span; i++) {
+                  switch (side) {
+                    case 'top':
+                    case 'bottom':
+                      segment.add(BoundaryElement(type: type, row: startRow, col: startCol + i, side: side));
+                      break;
+                    case 'left':
+                    case 'right':
+                      segment.add(BoundaryElement(type: type, row: startRow + i, col: startCol, side: side));
+                      break;
+                  }
+                }
+                // Check if the segment already exists (all 12 present)
+                final allExist = segment.every((b) => widget.grid.boundaries.contains(b));
+                if (allExist) {
+                  // Remove all
+                  if (widget.onRemoveBoundary != null) {
+                    for (final b in segment) {
+                      widget.onRemoveBoundary!(b);
+                      print('Removed ${b.type} at row=${b.row}, col=${b.col}, side=${b.side}');
+                    }
+                  }
+                } else {
+                  // Add all
+                  if (widget.onAddBoundary != null) {
+                    for (final b in segment) {
+                      if (!widget.grid.boundaries.contains(b)) {
+                        widget.onAddBoundary!(b);
+                        print('Placed ${b.type} at row=${b.row}, col=${b.col}, side=${b.side}');
+                      }
+                    }
+                  }
+                }
+              }
+            },
+            child: gridContent,
+          );
+        }
+
         // Calculate translation to move the center of the visible grid to the origin
         final double gridW = cellInchSize * totalColsInches;
         final double gridH = cellInchSize * totalRowsInches;
@@ -387,6 +498,22 @@ class GridWidgetState extends State<GridWidget> {
                 setState(() {
                   _dragRotation = (_dragRotation + 90) % 360;
                 });
+                // Check if preview is blocked after rotation
+                if (_lastPreviewData != null) {
+                  final type = _lastPreviewData!['type'];
+                  final gridW = widget.grid.widthInches.floor();
+                  final gridH = widget.grid.lengthInches.floor();
+                  final dims = ObjectItem.getObjectDimensions(type);
+                  final objW = dims['width'] ?? 1;
+                  final objH = dims['height'] ?? 1;
+                  if (objW > gridW || objH > gridH) {
+                    print('Rotation blocked: object too large for grid after rotation.');
+                  } else {
+                    print('Rotated object to ${_dragRotation} degrees');
+                  }
+                } else {
+                  print('Rotated object to ${_dragRotation} degrees');
+                }
                 // If there is a preview in progress, re-trigger preview snapping after rotation
                 if (_lastPreviewData != null && _lastPreviewPointerOffset != null &&
                     _lastPreviewOffsetX != null && _lastPreviewOffsetY != null &&
@@ -562,6 +689,75 @@ class GridAreaPainter extends CustomPainter {
       Rect.fromLTWH(0, 0, cellInchSize * totalColsInches, cellInchSize * totalRowsInches),
       outlinePaint,
     );
+
+    // Draw doors and windows (boundaries)
+    for (final boundary in grid.boundaries) {
+      final double x = boundary.col * cellInchSize;
+      final double y = boundary.row * cellInchSize;
+      final double x2 = (boundary.col + 1) * cellInchSize;
+      final double y2 = (boundary.row + 1) * cellInchSize;
+      Paint paint;
+      if (boundary.type == 'door') {
+        paint = Paint()
+          ..color = Colors.brown
+          ..strokeWidth = 7
+          ..style = PaintingStyle.stroke;
+      } else {
+        paint = Paint()
+          ..color = Colors.blue
+          ..strokeWidth = 5
+          ..style = PaintingStyle.stroke;
+        // Dashed effect for window
+        // We'll draw a dashed line manually below
+      }
+      if (boundary.type == 'door') {
+        // Draw solid line for door
+        switch (boundary.side) {
+          case 'top':
+            canvas.drawLine(Offset(x, y), Offset(x2, y), paint);
+            break;
+          case 'bottom':
+            canvas.drawLine(Offset(x, y2), Offset(x2, y2), paint);
+            break;
+          case 'left':
+            canvas.drawLine(Offset(x, y), Offset(x, y2), paint);
+            break;
+          case 'right':
+            canvas.drawLine(Offset(x2, y), Offset(x2, y2), paint);
+            break;
+        }
+      } else {
+        // Draw dashed line for window
+        const dashWidth = 8.0;
+        const dashSpace = 6.0;
+        void drawDashedLine(Offset start, Offset end) {
+          final totalLength = (end - start).distance;
+          final direction = (end - start) / totalLength;
+          double drawn = 0;
+          while (drawn < totalLength) {
+            final currentDash = drawn + dashWidth < totalLength ? dashWidth : totalLength - drawn;
+            final p1 = start + direction * drawn;
+            final p2 = start + direction * (drawn + currentDash);
+            canvas.drawLine(p1, p2, paint);
+            drawn += dashWidth + dashSpace;
+          }
+        }
+        switch (boundary.side) {
+          case 'top':
+            drawDashedLine(Offset(x, y), Offset(x2, y));
+            break;
+          case 'bottom':
+            drawDashedLine(Offset(x, y2), Offset(x2, y2));
+            break;
+          case 'left':
+            drawDashedLine(Offset(x, y), Offset(x, y2));
+            break;
+          case 'right':
+            drawDashedLine(Offset(x2, y), Offset(x2, y2));
+            break;
+        }
+      }
+    }
   }
 
   @override
