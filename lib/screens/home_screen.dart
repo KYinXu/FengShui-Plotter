@@ -24,6 +24,10 @@ class _HomeScreenState extends State<HomeScreen> {
   List<BoundaryElement> _boundaries = [];
   bool _isAutoPlacing = false;
   Key _gridWidgetKey = UniqueKey();
+  // Mode: 'object' or 'border'
+  String _mode = 'object';
+  // In border mode, track selected boundary type
+  String _selectedBoundaryType = 'door';
 
   // Boundary mode: 'none', 'door', 'window'
   String _boundaryMode = 'none';
@@ -143,29 +147,34 @@ class _HomeScreenState extends State<HomeScreen> {
                     const SizedBox(width: 12),
                     ToggleButtons(
                       isSelected: [
-                        _boundaryMode == 'none',
-                        _boundaryMode == 'door',
-                        _boundaryMode == 'window',
+                        _mode == 'object',
+                        _mode == 'border',
                       ],
                       onPressed: (int index) {
                         setState(() {
-                          if (index == 0) _boundaryMode = 'none';
-                          if (index == 1) _boundaryMode = 'door';
-                          if (index == 2) _boundaryMode = 'window';
+                          _mode = index == 0 ? 'object' : 'border';
                         });
                       },
                       children: const [
                         Padding(
-                          padding: EdgeInsets.symmetric(horizontal: 8.0),
-                          child: Text('Normal'),
+                          padding: EdgeInsets.symmetric(horizontal: 16.0),
+                          child: Row(
+                            children: [
+                              Icon(Icons.category),
+                              SizedBox(width: 6),
+                              Text('Object'),
+                            ],
+                          ),
                         ),
                         Padding(
-                          padding: EdgeInsets.symmetric(horizontal: 8.0),
-                          child: Text('Add Door'),
-                        ),
-                        Padding(
-                          padding: EdgeInsets.symmetric(horizontal: 8.0),
-                          child: Text('Add Window'),
+                          padding: EdgeInsets.symmetric(horizontal: 16.0),
+                          child: Row(
+                            children: [
+                              Icon(Icons.border_outer),
+                              SizedBox(width: 6),
+                              Text('Border'),
+                            ],
+                          ),
                         ),
                       ],
                     ),
@@ -200,7 +209,7 @@ class _HomeScreenState extends State<HomeScreen> {
                         rotationZ: _rotationZ,
                         objects: _placedObjects,
                         onObjectDropped: (row, col, type, icon, [rotation = 0]) => _handleObjectDropped(row, col, type, icon, rotation),
-                        boundaryMode: _boundaryMode,
+                        boundaryMode: _mode == 'object' ? 'none' : _selectedBoundaryType,
                         onAddBoundary: _handleAddBoundary,
                         onRemoveBoundary: _handleRemoveBoundary,
                       ),

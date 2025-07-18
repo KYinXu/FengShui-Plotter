@@ -269,6 +269,95 @@ class GridWidgetState extends State<GridWidget> {
             if (gridLocal == null) {
               return;
             }
+            // Border mode: handle door/window drop
+            if (widget.boundaryMode == 'door' || widget.boundaryMode == 'window') {
+              final String type = details.data['type'];
+              // Snap to nearest border wall within a radius
+              final int maxRow = widget.grid.lengthInches.floor();
+              final int maxCol = widget.grid.widthInches.floor();
+              final double col = gridLocal.dx / cellInchSize;
+              final double row = gridLocal.dy / cellInchSize;
+              final int cellCol = col.floor();
+              final int cellRow = row.floor();
+              final double dx = col - cellCol;
+              final double dy = row - cellRow;
+              // Find nearest border wall and side
+              double minDist = double.infinity;
+              String? nearestSide;
+              int nearestRow = cellRow;
+              int nearestCol = cellCol;
+              // Check all four borders
+              final borderChecks = [
+                {'side': 'top', 'row': 0, 'col': cellCol, 'dist': (row - 0).abs()},
+                {'side': 'bottom', 'row': maxRow - 1, 'col': cellCol, 'dist': (row - (maxRow - 1)).abs()},
+                {'side': 'left', 'row': cellRow, 'col': 0, 'dist': (col - 0).abs()},
+                {'side': 'right', 'row': cellRow, 'col': maxCol - 1, 'dist': (col - (maxCol - 1)).abs()},
+              ];
+              for (final check in borderChecks) {
+                final dist = check['dist'];
+                if (dist != null && (dist as double) < minDist) {
+                  minDist = dist as double;
+                  nearestSide = check['side'] as String;
+                  nearestRow = check['row'] as int;
+                  nearestCol = check['col'] as int;
+                }
+              }
+              // Only snap if within radius (e.g., 1.0 grid cell)
+              if (minDist > 1.0) return;
+              // Place the boundary at the nearest border
+              // Reuse the 12-segment logic from onTapDown
+              int span = 12;
+              int startRow = nearestRow;
+              int startCol = nearestCol;
+              if ((nearestSide == 'top' || nearestSide == 'bottom') && maxCol < span) return;
+              if ((nearestSide == 'left' || nearestSide == 'right') && maxRow < span) return;
+              switch (nearestSide) {
+                case 'top':
+                  if (startCol + span > maxCol) startCol = maxCol - span;
+                  break;
+                case 'bottom':
+                  if (startCol + span > maxCol) startCol = maxCol - span;
+                  break;
+                case 'left':
+                  if (startRow + span > maxRow) startRow = maxRow - span;
+                  break;
+                case 'right':
+                  if (startRow + span > maxRow) startRow = maxRow - span;
+                  break;
+              }
+              List<BoundaryElement> segment = [];
+              for (int i = 0; i < span; i++) {
+                switch (nearestSide) {
+                  case 'top':
+                  case 'bottom':
+                    segment.add(BoundaryElement(type: type, row: startRow, col: startCol + i, side: nearestSide!));
+                    break;
+                  case 'left':
+                  case 'right':
+                    segment.add(BoundaryElement(type: type, row: startRow + i, col: startCol, side: nearestSide!));
+                    break;
+                }
+              }
+              final allExist = segment.every((b) => widget.grid.boundaries.contains(b));
+              if (allExist) {
+                if (widget.onRemoveBoundary != null) {
+                  for (final b in segment) {
+                    widget.onRemoveBoundary!(b);
+                    print('Removed ${b.type} at row=${b.row}, col=${b.col}, side=${b.side}');
+                  }
+                }
+              } else {
+                if (widget.onAddBoundary != null) {
+                  for (final b in segment) {
+                    if (!widget.grid.boundaries.contains(b)) {
+                      widget.onAddBoundary!(b);
+                      print('Placed ${b.type} at row=${b.row}, col=${b.col}, side=${b.side}');
+                    }
+                  }
+                }
+              }
+              return;
+            }
             final String type = details.data['type'];
             // Use rotated polygon for centering offset (fixes placement for rotated objects)
             final rotatedPoly = getTransformedPolygon(type, 0, 0, _dragRotation);
