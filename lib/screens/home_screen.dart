@@ -94,7 +94,9 @@ class _HomeScreenState extends State<HomeScreen> {
               child: GridInputForm(onGridCreated: _onGridCreated),
             ),
             if (_currentGrid != null) ...[
-              const ObjectPalette(),
+              ObjectPalette(
+                mode: _mode,
+              ),
               Padding(
                 padding: const EdgeInsets.symmetric(vertical: 8.0),
                 child: Row(
