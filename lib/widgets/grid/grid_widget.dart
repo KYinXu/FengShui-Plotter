@@ -139,6 +139,12 @@ class GridWidgetState extends State<GridWidget> {
     return false;
   }
 
+  // Helper to check if a type is a boundary
+  bool isBoundaryType(String type) {
+    // You can expand this list if you add more boundary types
+    return type == 'door' || type == 'window';
+  }
+
   // Update preview/placement logic to use polygon system
   // TODO: 180 degree rotations x < 0 and 270 degree rotations x < 0 y < 0 are bugged here, all others work and placements work
   void _handlePreviewMove(Map<String, dynamic> data, Offset pointerOffset, double offsetX, double offsetY, double gridWidth, double gridHeightPx, double cellInchSize) {
@@ -154,6 +160,58 @@ class GridWidgetState extends State<GridWidget> {
     Future(() {
       if (data['type'] is! String || data['icon'] is! IconData) return;
       final String type = data['type'];
+      // Special case for boundary types: always show preview at pointer
+      if (isBoundaryType(type)) {
+        final RenderBox? box = context.findRenderObject() as RenderBox?;
+        if (box == null) return;
+        final Offset local = box.globalToLocal(pointerOffset);
+        final Offset gridLocalPointer = local - Offset(offsetX, offsetY);
+        final Offset? gridLocal = _pickGridCell3D(
+          pointer: gridLocalPointer,
+          gridWidth: gridWidth,
+          gridHeight: gridHeightPx,
+          cellInchSize: cellInchSize,
+          rotationZ: widget.rotationZ,
+          scale: _scale,
+          rotateX: widget.rotationX,
+          rotateY: widget.rotationY,
+        );
+        if (gridLocal != null) {
+          double col = gridLocal.dx / cellInchSize;
+          double row = gridLocal.dy / cellInchSize;
+          final gridW = widget.grid.widthInches.floor();
+          final gridH = widget.grid.lengthInches.floor();
+          // Snap to nearest edge
+          double minDist = double.infinity;
+          String? nearestSide;
+          double snappedCol = col;
+          double snappedRow = row;
+          final edgeChecks = [
+            {'side': 'top', 'dist': (row - 0).abs(), 'col': col, 'row': 0.0},
+            {'side': 'bottom', 'dist': (row - (gridH)).abs(), 'col': col, 'row': gridH.toDouble()},
+            {'side': 'left', 'dist': (col - 0).abs(), 'col': 0.0, 'row': row},
+            {'side': 'right', 'dist': (col - (gridW)).abs(), 'col': gridW.toDouble(), 'row': row},
+          ];
+          for (final check in edgeChecks) {
+            final dist = check['dist'] as double;
+            if (dist < minDist) {
+              minDist = dist;
+              nearestSide = check['side'] as String;
+              snappedCol = check['col'] as double;
+              snappedRow = check['row'] as double;
+            }
+          }
+          // Only show preview if close enough to an edge (within 30 cells)
+          if (minDist > 30.0) {
+            _updatePreview(null, null, null);
+            return;
+          }
+          _updatePreview(Offset(snappedCol, snappedRow), type, data['icon']);
+        } else {
+          _updatePreview(null, null, null);
+        }
+        return;
+      }
       // Prevent preview if object is larger than grid
       final gridW = widget.grid.widthInches.floor();
       final gridH = widget.grid.lengthInches.floor();
@@ -416,6 +474,74 @@ class GridWidgetState extends State<GridWidget> {
                 if (_previewCell != null && _previewType != null && _previewIcon != null)
                   Builder(
                     builder: (context) {
+                      // Always show a line preview for door/window types
+                      if (_previewType == 'door' || _previewType == 'window') {
+                        final gridW = widget.grid.widthInches.floor();
+                        final gridH = widget.grid.lengthInches.floor();
+                        final double col = _previewCell!.dx;
+                        final double row = _previewCell!.dy;
+                        final int cellCol = col.floor();
+                        final int cellRow = row.floor();
+                        final double dx = col - cellCol;
+                        final double dy = row - cellRow;
+                        double minDist = double.infinity;
+                        String? nearestSide;
+                        int nearestRow = cellRow;
+                        int nearestCol = cellCol;
+                        final borderChecks = [
+                          {'side': 'top', 'row': 0, 'col': cellCol, 'dist': (row - 0).abs()},
+                          {'side': 'bottom', 'row': gridH - 1, 'col': cellCol, 'dist': (row - (gridH - 1)).abs()},
+                          {'side': 'left', 'row': cellRow, 'col': 0, 'dist': (col - 0).abs()},
+                          {'side': 'right', 'row': cellRow, 'col': gridW - 1, 'dist': (col - (gridW - 1)).abs()},
+                        ];
+                        for (final check in borderChecks) {
+                          final dist = check['dist'];
+                          if (dist != null && (dist as double) < minDist) {
+                            minDist = dist as double;
+                            nearestSide = check['side'] as String;
+                            nearestRow = check['row'] as int;
+                            nearestCol = check['col'] as int;
+                          }
+                        }
+                        if (minDist > 1.0) return const SizedBox.shrink();
+                        int span = 12;
+                        int startRow = nearestRow;
+                        int startCol = nearestCol;
+                        if ((nearestSide == 'top' || nearestSide == 'bottom') && gridW < span) return const SizedBox.shrink();
+                        if ((nearestSide == 'left' || nearestSide == 'right') && gridH < span) return const SizedBox.shrink();
+                        switch (nearestSide) {
+                          case 'top':
+                          case 'bottom':
+                            if (startCol + span > gridW) startCol = gridW - span;
+                            break;
+                          case 'left':
+                          case 'right':
+                            if (startRow + span > gridH) startRow = gridH - span;
+                            break;
+                        }
+                        final double x = startCol * cellInchSize;
+                        final double y = startRow * cellInchSize;
+                        final double x2 = (nearestSide == 'top' || nearestSide == 'bottom') ? (startCol + span) * cellInchSize : x;
+                        final double y2 = (nearestSide == 'left' || nearestSide == 'right') ? (startRow + span) * cellInchSize : y;
+                        return Positioned(
+                          left: 0,
+                          top: 0,
+                          child: IgnorePointer(
+                            child: CustomPaint(
+                              size: Size(gridW * cellInchSize, gridH * cellInchSize),
+                              painter: _BoundaryPreviewPainter(
+                                type: _previewType!,
+                                side: nearestSide!,
+                                x: x,
+                                y: y,
+                                x2: x2,
+                                y2: y2,
+                              ),
+                            ),
+                          ),
+                        );
+                      }
+                      // Default object preview
                       final width = cellInchSize * (ObjectItem.getObjectDimensions(_previewType!)['width'] ?? 1);
                       final height = cellInchSize * (ObjectItem.getObjectDimensions(_previewType!)['height'] ?? 1);
                       return Positioned(
@@ -858,5 +984,47 @@ class GridAreaPainter extends CustomPainter {
         oldDelegate.majorGridBorderColor != majorGridBorderColor ||
         oldDelegate.gridWidth != gridWidth ||
         oldDelegate.gridHeight != gridHeight;
+  }
+}
+
+class _BoundaryPreviewPainter extends CustomPainter {
+  final String type;
+  final String side;
+  final double x, y, x2, y2;
+  _BoundaryPreviewPainter({required this.type, required this.side, required this.x, required this.y, required this.x2, required this.y2});
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    Paint paint;
+    if (type == 'door') {
+      paint = Paint()
+        ..color = Colors.brown // fully opaque
+        ..strokeWidth = 10
+        ..style = PaintingStyle.stroke;
+      canvas.drawLine(Offset(x, y), Offset(x2, y2), paint);
+    } else {
+      paint = Paint()
+        ..color = Colors.blue // fully opaque
+        ..strokeWidth = 8
+        ..style = PaintingStyle.stroke;
+      // Dashed effect for window
+      const dashWidth = 8.0;
+      const dashSpace = 6.0;
+      final totalLength = (Offset(x2, y2) - Offset(x, y)).distance;
+      final direction = (Offset(x2, y2) - Offset(x, y)) / totalLength;
+      double drawn = 0;
+      while (drawn < totalLength) {
+        final currentDash = drawn + dashWidth < totalLength ? dashWidth : totalLength - drawn;
+        final p1 = Offset(x, y) + direction * drawn;
+        final p2 = Offset(x, y) + direction * (drawn + currentDash);
+        canvas.drawLine(p1, p2, paint);
+        drawn += dashWidth + dashSpace;
+      }
+    }
+  }
+
+  @override
+  bool shouldRepaint(covariant _BoundaryPreviewPainter oldDelegate) {
+    return oldDelegate.type != type || oldDelegate.side != side || oldDelegate.x != x || oldDelegate.y != y || oldDelegate.x2 != x2 || oldDelegate.y2 != y2;
   }
 } 

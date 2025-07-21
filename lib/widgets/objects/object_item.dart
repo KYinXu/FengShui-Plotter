@@ -45,6 +45,9 @@ class ObjectItem extends StatelessWidget {
         return {'width': 80, 'height': 60};
       case 'desk':
         return {'width': 48, 'height': 24};
+      case 'door':
+      case 'window':
+        return {'width': 0, 'height': 0};
       default:
         return {'width': 1, 'height': 1};
     }
@@ -70,6 +73,9 @@ class ObjectItem extends StatelessWidget {
           Offset(dims['width']!.toDouble(), dims['height']!.toDouble()),
           Offset(0, dims['height']!.toDouble()),
         ];
+      case 'door':
+      case 'window':
+        return [const Offset(0, 0)];
       default:
         return [
           const Offset(0, 0),
