@@ -207,6 +207,11 @@ class GridWidgetState extends State<GridWidget> {
             return;
           }
           _updatePreview(Offset(snappedCol, snappedRow), type, data['icon']);
+          // Diagnostic print for boundaries during drag
+          print('Boundaries during drag:');
+          for (final b in widget.grid.boundaries) {
+            print(b);
+          }
         } else {
           _updatePreview(null, null, null);
         }
@@ -308,6 +313,11 @@ class GridWidgetState extends State<GridWidget> {
         final double offsetY = (constraints.maxHeight - gridHeightPx) / 2;
 
         Widget gridContent = DragTarget<Map<String, dynamic>>(
+          onWillAccept: (data) {
+            print('onWillAccept called with data:');
+            print(data);
+            return true;
+          },
           onAcceptWithDetails: (details) {
             final RenderBox box = context.findRenderObject() as RenderBox;
             final Offset local = box.globalToLocal(details.offset);
@@ -328,7 +338,7 @@ class GridWidgetState extends State<GridWidget> {
               return;
             }
             // Border mode: handle door/window drop
-            if (widget.boundaryMode == 'door' || widget.boundaryMode == 'window') {
+            if (isBoundaryType(details.data['type'])) {
               final String type = details.data['type'];
               // Snap to nearest border wall within a radius
               final int maxRow = widget.grid.lengthInches.floor();
@@ -407,10 +417,19 @@ class GridWidgetState extends State<GridWidget> {
               } else {
                 if (widget.onAddBoundary != null) {
                   for (final b in segment) {
+                    print('Checking if boundary exists: $b');
+                    print('Current boundaries:');
+                    for (final boundary in widget.grid.boundaries) {
+                      print(boundary);
+                    }
                     if (!widget.grid.boundaries.contains(b)) {
                       widget.onAddBoundary!(b);
-                      print('Placed ${b.type} at row=${b.row}, col=${b.col}, side=${b.side}');
+                      print('Boundary added: $b');
                     }
+                  }
+                  print('Boundaries after drop:');
+                  for (final boundary in widget.grid.boundaries) {
+                    print(boundary);
                   }
                 }
               }
@@ -629,6 +648,7 @@ class GridWidgetState extends State<GridWidget> {
                     break;
                 }
                 if (!isOuter) return;
+                // Use the type from the drag data
                 final type = widget.boundaryMode == 'door' ? 'door' : 'window';
                 // Build the 12-segment boundary
                 List<BoundaryElement> segment = [];

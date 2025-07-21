@@ -58,7 +58,14 @@ class _HomeScreenState extends State<HomeScreen> {
       final maxX = poly.map((p) => p.dx).reduce((a, b) => a > b ? a : b);
       final maxY = poly.map((p) => p.dy).reduce((a, b) => a > b ? a : b);
       print('Placed object bounds: minX=$minX, minY=$minY, maxX=$maxX, maxY=$maxY');
-      print('Placed objects: \\${_placedObjects.map((o) => 'type=\${o.type}, row=\${o.row}, col=\${o.col}, rot=\${o.rotation}').toList()}');
+      print('Placed objects: \n');
+      for (final o in _placedObjects) {
+        print('type=${o.type}, row=${o.row}, col=${o.col}, rot=${o.rotation}');
+      }
+      print('Boundaries after object drop: \n');
+      for (final b in _boundaries) {
+        print(b);
+      }
     });
   }
 
@@ -72,6 +79,11 @@ class _HomeScreenState extends State<HomeScreen> {
     setState(() {
       if (!_boundaries.contains(boundary)) {
         _boundaries.add(boundary);
+        _gridWidgetKey = UniqueKey(); // Force GridWidget to rebuild
+      }
+      print('Boundaries after add: \n');
+      for (final b in _boundaries) {
+        print(b);
       }
     });
   }
@@ -79,6 +91,11 @@ class _HomeScreenState extends State<HomeScreen> {
   void _handleRemoveBoundary(BoundaryElement boundary) {
     setState(() {
       _boundaries.remove(boundary);
+      _gridWidgetKey = UniqueKey(); // Force GridWidget to rebuild
+      print('Boundaries after remove: \n');
+      for (final b in _boundaries) {
+        print(b);
+      }
     });
   }
 
