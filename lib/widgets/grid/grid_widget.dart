@@ -479,7 +479,7 @@ class GridWidgetState extends State<GridWidget> {
         );
 
         // Overlay GestureDetector for edge clicks in boundary mode
-        if (widget.boundaryMode != 'none') {
+        if (widget.boundaryMode != 'none' || true) {
           gridContent = GestureDetector(
             behavior: HitTestBehavior.translucent,
             onTapDown: (details) {
@@ -512,14 +512,14 @@ class GridWidgetState extends State<GridWidget> {
                 
                 if (result != null) {
                   if (result.shouldRemove) {
-                    if (widget.onRemoveBoundary != null) {
+                    if (widget.onRemoveBoundary != null || true) {
                       for (final b in result.segment) {
                         widget.onRemoveBoundary!(b);
                         print('Removed ${b.type} at row=${b.row}, col=${b.col}, side=${b.side}');
                       }
                     }
                   } else {
-                    if (widget.onAddBoundary != null) {
+                    if (widget.onAddBoundary != null || true) {
                       for (final b in result.segment) {
                         if (!widget.grid.boundaries.contains(b)) {
                           widget.onAddBoundary!(b);
@@ -551,10 +551,10 @@ class GridWidgetState extends State<GridWidget> {
           ..scale(_scale)
           ..translate(-gridW / 2, -gridH / 2);
 
-        final vm.Matrix4 centerMatrix = vm.Matrix4.identity()
-          ..translate(-gridW / 2, -gridH / 2);
-        final vm.Matrix4 uncenterMatrix = vm.Matrix4.identity()
-          ..translate(gridW / 2, gridH / 2);
+        // final vm.Matrix4 centerMatrix = vm.Matrix4.identity()
+        //   ..translate(-gridW / 2, -gridH / 2);
+        // final vm.Matrix4 uncenterMatrix = vm.Matrix4.identity()
+        //   ..translate(gridW / 2, gridH / 2);
         final transformedGrid = Center(
           child: Transform(
             alignment: Alignment.topLeft,
