@@ -9,6 +9,7 @@ import 'dart:async';
 import 'package:flutter/services.dart';
 import 'grid_helpers.dart';
 import 'grid_painters.dart';
+import '../../services/boundary_placer_service.dart';
 
 class GridWidget extends StatefulWidget {
   final Grid grid;
@@ -140,11 +141,7 @@ class GridWidgetState extends State<GridWidget> {
     return false;
   }
 
-  // Helper to check if a type is a boundary
-  bool isBoundaryType(String type) {
-    // You can expand this list if you add more boundary types
-    return type == 'door' || type == 'window';
-  }
+
 
   // Update preview/placement logic to use polygon system
   // TODO: 180 degree rotations x < 0 and 270 degree rotations x < 0 y < 0 are bugged here, all others work and placements work
@@ -162,7 +159,7 @@ class GridWidgetState extends State<GridWidget> {
       if (data['type'] is! String || data['icon'] is! IconData) return;
       final String type = data['type'];
       // Special case for boundary types: always show preview at pointer
-      if (isBoundaryType(type)) {
+      if (BoundaryPlacerService.isBoundaryType(type)) {
         final RenderBox? box = context.findRenderObject() as RenderBox?;
         if (box == null) return;
         final Offset local = box.globalToLocal(pointerOffset);
@@ -182,36 +179,20 @@ class GridWidgetState extends State<GridWidget> {
           double row = gridLocal.dy / cellInchSize;
           final gridW = widget.grid.widthInches.floor();
           final gridH = widget.grid.lengthInches.floor();
-          // Snap to nearest edge
-          double minDist = double.infinity;
-          String? nearestSide;
-          double snappedCol = col;
-          double snappedRow = row;
-          final edgeChecks = [
-            {'side': 'top', 'dist': (row - 0).abs(), 'col': col, 'row': 0.0},
-            {'side': 'bottom', 'dist': (row - (gridH)).abs(), 'col': col, 'row': gridH.toDouble()},
-            {'side': 'left', 'dist': (col - 0).abs(), 'col': 0.0, 'row': row},
-            {'side': 'right', 'dist': (col - (gridW)).abs(), 'col': gridW.toDouble(), 'row': row},
-          ];
-          for (final check in edgeChecks) {
-            final dist = check['dist'] as double;
-            if (dist < minDist) {
-              minDist = dist;
-              nearestSide = check['side'] as String;
-              snappedCol = check['col'] as double;
-              snappedRow = check['row'] as double;
+          
+          final previewInfo = BoundaryPlacerService.calculateBoundaryPreview(
+            col, row, gridH, gridW, cellInchSize
+          );
+          
+          if (previewInfo != null) {
+            _updatePreview(Offset(col, row), type, data['icon']);
+            // Diagnostic print for boundaries during drag
+            print('Boundaries during drag:');
+            for (final b in widget.grid.boundaries) {
+              print(b);
             }
-          }
-          // Only show preview if close enough to an edge (within 30 cells)
-          if (minDist > 30.0) {
+          } else {
             _updatePreview(null, null, null);
-            return;
-          }
-          _updatePreview(Offset(snappedCol, snappedRow), type, data['icon']);
-          // Diagnostic print for boundaries during drag
-          print('Boundaries during drag:');
-          for (final b in widget.grid.boundaries) {
-            print(b);
           }
         } else {
           _updatePreview(null, null, null);
@@ -339,98 +320,33 @@ class GridWidgetState extends State<GridWidget> {
               return;
             }
             // Border mode: handle door/window drop
-            if (isBoundaryType(details.data['type'])) {
+            if (BoundaryPlacerService.isBoundaryType(details.data['type'])) {
               final String type = details.data['type'];
-              // Snap to nearest border wall within a radius
               final int maxRow = widget.grid.lengthInches.floor();
               final int maxCol = widget.grid.widthInches.floor();
               final double col = gridLocal.dx / cellInchSize;
               final double row = gridLocal.dy / cellInchSize;
-              final int cellCol = col.floor();
-              final int cellRow = row.floor();
-              final double dx = col - cellCol;
-              final double dy = row - cellRow;
-              // Find nearest border wall and side
-              double minDist = double.infinity;
-              String? nearestSide;
-              int nearestRow = cellRow;
-              int nearestCol = cellCol;
-              // Check all four borders
-              final borderChecks = [
-                {'side': 'top', 'row': 0, 'col': cellCol, 'dist': (row - 0).abs()},
-                {'side': 'bottom', 'row': maxRow - 1, 'col': cellCol, 'dist': (row - (maxRow - 1)).abs()},
-                {'side': 'left', 'row': cellRow, 'col': 0, 'dist': (col - 0).abs()},
-                {'side': 'right', 'row': cellRow, 'col': maxCol - 1, 'dist': (col - (maxCol - 1)).abs()},
-              ];
-              for (final check in borderChecks) {
-                final dist = check['dist'];
-                if (dist != null && (dist as double) < minDist) {
-                  minDist = dist as double;
-                  nearestSide = check['side'] as String;
-                  nearestRow = check['row'] as int;
-                  nearestCol = check['col'] as int;
-                }
-              }
-              // Only snap if within radius (e.g., 1.0 grid cell)
-              if (minDist > 1.0) return;
-              // Place the boundary at the nearest border
-              // Reuse the 12-segment logic from onTapDown
-              int span = 12;
-              int startRow = nearestRow;
-              int startCol = nearestCol;
-              if ((nearestSide == 'top' || nearestSide == 'bottom') && maxCol < span) return;
-              if ((nearestSide == 'left' || nearestSide == 'right') && maxRow < span) return;
-              switch (nearestSide) {
-                case 'top':
-                  if (startCol + span > maxCol) startCol = maxCol - span;
-                  break;
-                case 'bottom':
-                  if (startCol + span > maxCol) startCol = maxCol - span;
-                  break;
-                case 'left':
-                  if (startRow + span > maxRow) startRow = maxRow - span;
-                  break;
-                case 'right':
-                  if (startRow + span > maxRow) startRow = maxRow - span;
-                  break;
-              }
-              List<BoundaryElement> segment = [];
-              for (int i = 0; i < span; i++) {
-                switch (nearestSide) {
-                  case 'top':
-                  case 'bottom':
-                    segment.add(BoundaryElement(type: type, row: startRow, col: startCol + i, side: nearestSide!));
-                    break;
-                  case 'left':
-                  case 'right':
-                    segment.add(BoundaryElement(type: type, row: startRow + i, col: startCol, side: nearestSide!));
-                    break;
-                }
-              }
-              final allExist = segment.every((b) => widget.grid.boundaries.contains(b));
-              if (allExist) {
-                if (widget.onRemoveBoundary != null) {
-                  for (final b in segment) {
-                    widget.onRemoveBoundary!(b);
-                    print('Removed ${b.type} at row=${b.row}, col=${b.col}, side=${b.side}');
-                  }
-                }
-              } else {
-                if (widget.onAddBoundary != null) {
-                  for (final b in segment) {
-                    print('Checking if boundary exists: $b');
-                    print('Current boundaries:');
-                    for (final boundary in widget.grid.boundaries) {
-                      print(boundary);
-                    }
-                    if (!widget.grid.boundaries.contains(b)) {
-                      widget.onAddBoundary!(b);
-                      print('Boundary added: $b');
+              
+              final result = BoundaryPlacerService.handleBoundaryDrop(
+                type, col, row, maxRow, maxCol, widget.grid.boundaries
+              );
+              
+              if (result != null) {
+                if (result.shouldRemove) {
+                  if (widget.onRemoveBoundary != null) {
+                    for (final b in result.segment) {
+                      widget.onRemoveBoundary!(b);
+                      print('Removed ${b.type} at row=${b.row}, col=${b.col}, side=${b.side}');
                     }
                   }
-                  print('Boundaries after drop:');
-                  for (final boundary in widget.grid.boundaries) {
-                    print(boundary);
+                } else {
+                  if (widget.onAddBoundary != null) {
+                    for (final b in result.segment) {
+                      if (!widget.grid.boundaries.contains(b)) {
+                        widget.onAddBoundary!(b);
+                        print('Boundary added: $b');
+                      }
+                    }
                   }
                 }
               }
@@ -501,66 +417,31 @@ class GridWidgetState extends State<GridWidget> {
                         final gridH = widget.grid.lengthInches.floor();
                         final double col = _previewCell!.dx;
                         final double row = _previewCell!.dy;
-                        final int cellCol = col.floor();
-                        final int cellRow = row.floor();
-                        final double dx = col - cellCol;
-                        final double dy = row - cellRow;
-                        double minDist = double.infinity;
-                        String? nearestSide;
-                        int nearestRow = cellRow;
-                        int nearestCol = cellCol;
-                        final borderChecks = [
-                          {'side': 'top', 'row': 0, 'col': cellCol, 'dist': (row - 0).abs()},
-                          {'side': 'bottom', 'row': gridH - 1, 'col': cellCol, 'dist': (row - (gridH - 1)).abs()},
-                          {'side': 'left', 'row': cellRow, 'col': 0, 'dist': (col - 0).abs()},
-                          {'side': 'right', 'row': cellRow, 'col': gridW - 1, 'dist': (col - (gridW - 1)).abs()},
-                        ];
-                        for (final check in borderChecks) {
-                          final dist = check['dist'];
-                          if (dist != null && (dist as double) < minDist) {
-                            minDist = dist as double;
-                            nearestSide = check['side'] as String;
-                            nearestRow = check['row'] as int;
-                            nearestCol = check['col'] as int;
-                          }
-                        }
-                        if (minDist > 1.0) return const SizedBox.shrink();
-                        int span = 12;
-                        int startRow = nearestRow;
-                        int startCol = nearestCol;
-                        if ((nearestSide == 'top' || nearestSide == 'bottom') && gridW < span) return const SizedBox.shrink();
-                        if ((nearestSide == 'left' || nearestSide == 'right') && gridH < span) return const SizedBox.shrink();
-                        switch (nearestSide) {
-                          case 'top':
-                          case 'bottom':
-                            if (startCol + span > gridW) startCol = gridW - span;
-                            break;
-                          case 'left':
-                          case 'right':
-                            if (startRow + span > gridH) startRow = gridH - span;
-                            break;
-                        }
-                        final double x = startCol * cellInchSize;
-                        final double y = startRow * cellInchSize;
-                        final double x2 = (nearestSide == 'top' || nearestSide == 'bottom') ? (startCol + span) * cellInchSize : x;
-                        final double y2 = (nearestSide == 'left' || nearestSide == 'right') ? (startRow + span) * cellInchSize : y;
-                        return Positioned(
-                          left: 0,
-                          top: 0,
-                          child: IgnorePointer(
-                            child: CustomPaint(
-                              size: Size(gridW * cellInchSize, gridH * cellInchSize),
-                              painter: BoundaryPreviewPainter(
-                                type: _previewType!,
-                                side: nearestSide!,
-                                x: x,
-                                y: y,
-                                x2: x2,
-                                y2: y2,
+                        
+                        final previewInfo = BoundaryPlacerService.calculateBoundaryPreview(
+                          col, row, gridH, gridW, cellInchSize
+                        );
+                        
+                        if (previewInfo != null) {
+                          return Positioned(
+                            left: 0,
+                            top: 0,
+                            child: IgnorePointer(
+                              child: CustomPaint(
+                                size: Size(gridW * cellInchSize, gridH * cellInchSize),
+                                painter: BoundaryPreviewPainter(
+                                  type: _previewType!,
+                                  side: previewInfo.side,
+                                  x: previewInfo.x,
+                                  y: previewInfo.y,
+                                  x2: previewInfo.x2,
+                                  y2: previewInfo.y2,
+                                ),
                               ),
                             ),
-                          ),
-                        );
+                          );
+                        }
+                        return const SizedBox.shrink();
                       }
                       // Default object preview
                       final width = cellInchSize * (ObjectItem.getObjectDimensions(_previewType!)['width'] ?? 1);
@@ -623,66 +504,27 @@ class GridWidgetState extends State<GridWidget> {
               if (side != null && minDist < 0.2) {
                 final maxRow = widget.grid.lengthInches.floor();
                 final maxCol = widget.grid.widthInches.floor();
-                int span = 12; // 12 grid spaces (1 foot)
-                // Prevent placement if grid is too small
-                if ((side == 'top' || side == 'bottom') && maxCol < span) return;
-                if ((side == 'left' || side == 'right') && maxRow < span) return;
-                bool isOuter = false;
-                int startRow = cellRow;
-                int startCol = cellCol;
-                // Adjust start so the 12-segment fits within the grid
-                switch (side) {
-                  case 'top':
-                    isOuter = cellRow == 0;
-                    if (cellCol + span > maxCol) startCol = maxCol - span;
-                    break;
-                  case 'bottom':
-                    isOuter = cellRow == maxRow - 1;
-                    if (cellCol + span > maxCol) startCol = maxCol - span;
-                    break;
-                  case 'left':
-                    isOuter = cellCol == 0;
-                    if (cellRow + span > maxRow) startRow = maxRow - span;
-                    break;
-                  case 'right':
-                    isOuter = cellCol == maxCol - 1;
-                    if (cellRow + span > maxRow) startRow = maxRow - span;
-                    break;
-                }
-                if (!isOuter) return;
-                // Use the type from the drag data
                 final type = widget.boundaryMode == 'door' ? 'door' : 'window';
-                // Build the 12-segment boundary
-                List<BoundaryElement> segment = [];
-                for (int i = 0; i < span; i++) {
-                  switch (side) {
-                    case 'top':
-                    case 'bottom':
-                      segment.add(BoundaryElement(type: type, row: startRow, col: startCol + i, side: side));
-                      break;
-                    case 'left':
-                    case 'right':
-                      segment.add(BoundaryElement(type: type, row: startRow + i, col: startCol, side: side));
-                      break;
-                  }
-                }
-                // Check if the segment already exists (all 12 present)
-                final allExist = segment.every((b) => widget.grid.boundaries.contains(b));
-                if (allExist) {
-                  // Remove all
-                  if (widget.onRemoveBoundary != null) {
-                    for (final b in segment) {
-                      widget.onRemoveBoundary!(b);
-                      print('Removed ${b.type} at row=${b.row}, col=${b.col}, side=${b.side}');
+                
+                final result = BoundaryPlacerService.handleBoundaryClick(
+                  type, col, row, maxRow, maxCol, widget.grid.boundaries
+                );
+                
+                if (result != null) {
+                  if (result.shouldRemove) {
+                    if (widget.onRemoveBoundary != null) {
+                      for (final b in result.segment) {
+                        widget.onRemoveBoundary!(b);
+                        print('Removed ${b.type} at row=${b.row}, col=${b.col}, side=${b.side}');
+                      }
                     }
-                  }
-                } else {
-                  // Add all
-                  if (widget.onAddBoundary != null) {
-                    for (final b in segment) {
-                      if (!widget.grid.boundaries.contains(b)) {
-                        widget.onAddBoundary!(b);
-                        print('Placed ${b.type} at row=${b.row}, col=${b.col}, side=${b.side}');
+                  } else {
+                    if (widget.onAddBoundary != null) {
+                      for (final b in result.segment) {
+                        if (!widget.grid.boundaries.contains(b)) {
+                          widget.onAddBoundary!(b);
+                          print('Placed ${b.type} at row=${b.row}, col=${b.col}, side=${b.side}');
+                        }
                       }
                     }
                   }

@@ -99,3 +99,4 @@ Offset clampPolygonToGrid(String type, int row, int col, int rotation, int gridW
   if (bounds['maxY']! > gridH) shiftY = -(bounds['maxY']! - gridH).ceil();
   return Offset((col + shiftX).toDouble(), (row + shiftY).toDouble());
 }
+

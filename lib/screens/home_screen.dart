@@ -99,6 +99,12 @@ class _HomeScreenState extends State<HomeScreen> {
     });
   }
 
+  void _handleBoundaryTypeSelected(String type) {
+    setState(() {
+      _selectedBoundaryType = type;
+    });
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -113,6 +119,8 @@ class _HomeScreenState extends State<HomeScreen> {
             if (_currentGrid != null) ...[
               ObjectPalette(
                 mode: _mode,
+                selectedBoundaryType: _selectedBoundaryType,
+                onBoundaryTypeSelected: _handleBoundaryTypeSelected,
               ),
               Padding(
                 padding: const EdgeInsets.symmetric(vertical: 8.0),
