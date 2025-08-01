@@ -16,11 +16,11 @@ class GridWidget extends StatefulWidget {
   final double rotationX;
   final double rotationY;
   final double rotationZ;
-  final List<GridObject> objects;
+
   final void Function(int row, int col, String type, IconData icon, [int rotation])? onObjectDropped;
   final String boundaryMode; // 'none', 'door', 'window'
-  final void Function(BoundaryElement boundary)? onAddBoundary;
-  final void Function(BoundaryElement boundary)? onRemoveBoundary;
+  final void Function(GridBoundary boundary)? onAddBoundary;
+  final void Function(GridBoundary boundary)? onRemoveBoundary;
 
   const GridWidget({
     super.key,
@@ -28,7 +28,6 @@ class GridWidget extends StatefulWidget {
     this.rotationX = 0.3,
     this.rotationY = 0.0,
     this.rotationZ = 0.0,
-    this.objects = const [],
     this.onObjectDropped,
     this.boundaryMode = 'none',
     this.onAddBoundary,
@@ -85,7 +84,7 @@ class GridWidgetState extends State<GridWidget> {
     final gridW = widget.grid.widthInches.floor();
     final gridH = widget.grid.lengthInches.floor();
     if (!polygonInBounds(poly, gridW, gridH)) return true;
-    for (final obj in widget.objects) {
+    for (final obj in widget.grid.objects) {
       final objPoly = obj.getTransformedPolygon();
       if (polygonsIntersect(poly, objPoly)) return true;
     }
@@ -99,7 +98,7 @@ class GridWidgetState extends State<GridWidget> {
     // Try the initial position first
     final poly = getTransformedPolygon(type, startRow, startCol, rotation);
       bool collision = false;
-      for (final obj in widget.objects) {
+      for (final obj in widget.grid.objects) {
         if (polygonsIntersect(poly, obj.getTransformedPolygon())) {
           collision = true;
           break;
@@ -117,7 +116,7 @@ class GridWidgetState extends State<GridWidget> {
           final candidatePoly = getTransformedPolygon(type, row, col, rotation);
           if (polygonInBounds(candidatePoly, gridW, gridH)) {
             bool collision = false;
-            for (final obj in widget.objects) {
+            for (final obj in widget.grid.objects) {
               if (polygonsIntersect(candidatePoly, obj.getTransformedPolygon())) {
                 collision = true;
                 break;
@@ -185,6 +184,7 @@ class GridWidgetState extends State<GridWidget> {
           );
           
           if (previewInfo != null) {
+            // For boundaries, use the cursor position for preview
             _updatePreview(Offset(col, row), type, data['icon']);
             // Diagnostic print for boundaries during drag
             print('Boundaries during drag:');
@@ -327,8 +327,8 @@ class GridWidgetState extends State<GridWidget> {
               final double col = gridLocal.dx / cellInchSize;
               final double row = gridLocal.dy / cellInchSize;
               
-              final result = BoundaryPlacerService.handleBoundaryDrop(
-                type, col, row, maxRow, maxCol, widget.grid.boundaries
+              final result = BoundaryPlacerService.handleGridBoundaryDrop(
+                type, col, row, maxRow, maxCol, widget.grid.boundaries, details.data['icon']
               );
               
               if (result != null) {
@@ -472,7 +472,9 @@ class GridWidgetState extends State<GridWidget> {
                     },
                   ),
                 // Placed objects
-                ...widget.objects.map((obj) => GridObjectWidget(obj: obj, cellInchSize: cellInchSize)),
+                ...widget.grid.objects.map((obj) => GridObjectWidget(obj: obj, cellInchSize: cellInchSize)),
+                // Placed boundaries
+                ...widget.grid.boundaries.map((boundary) => GridBoundaryWidget(boundary: boundary, cellInchSize: cellInchSize)),
               ],
             );
           },
@@ -506,8 +508,8 @@ class GridWidgetState extends State<GridWidget> {
                 final maxCol = widget.grid.widthInches.floor();
                 final type = widget.boundaryMode == 'door' ? 'door' : 'window';
                 
-                final result = BoundaryPlacerService.handleBoundaryClick(
-                  type, col, row, maxRow, maxCol, widget.grid.boundaries
+                final result = BoundaryPlacerService.handleGridBoundaryClick(
+                  type, col, row, maxRow, maxCol, widget.grid.boundaries, Icons.door_front_door
                 );
                 
                 if (result != null) {

@@ -35,6 +35,72 @@ class GridObject {
   }
 }
 
+class GridBoundary {
+  final String type; // 'door' or 'window'
+  final int row;
+  final int col;
+  final String side; // 'top', 'bottom', 'left', 'right'
+  final IconData icon;
+
+  const GridBoundary({
+    required this.type,
+    required this.row,
+    required this.col,
+    required this.side,
+    required this.icon,
+  });
+
+  /// Returns the polygon for this boundary (a line segment)
+  List<Offset> getTransformedPolygon() {
+    const double thickness = 0.1; // Thin line for boundaries
+    const double length = 1.0; // One grid cell length
+    
+    List<Offset> poly;
+    switch (side) {
+      case 'top':
+      case 'bottom':
+        poly = [
+          Offset(0, 0),
+          Offset(length, 0),
+          Offset(length, thickness),
+          Offset(0, thickness),
+        ];
+        break;
+      case 'left':
+      case 'right':
+        poly = [
+          Offset(0, 0),
+          Offset(thickness, 0),
+          Offset(thickness, length),
+          Offset(0, length),
+        ];
+        break;
+      default:
+        poly = [Offset(0, 0), Offset(1, 0), Offset(1, 1), Offset(0, 1)];
+    }
+    
+    // Translate to position
+    return poly.map((p) => Offset(p.dx + col, p.dy + row)).toList();
+  }
+
+  @override
+  String toString() => 'GridBoundary(type: $type, row: $row, col: $col, side: $side)';
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is GridBoundary &&
+          runtimeType == other.runtimeType &&
+          type == other.type &&
+          row == other.row &&
+          col == other.col &&
+          side == other.side;
+
+  @override
+  int get hashCode => type.hashCode ^ row.hashCode ^ col.hashCode ^ side.hashCode;
+}
+
+// Keep BoundaryElement for backward compatibility with existing services
 class BoundaryElement {
   final String type; // 'door' or 'window'
   final int row;
@@ -69,7 +135,7 @@ class Grid extends Equatable {
   final double lengthInches;
   final double widthInches;
   final List<GridObject> objects;
-  final List<BoundaryElement> boundaries;
+  final List<GridBoundary> boundaries;
 
   const Grid({
     required this.lengthInches,
@@ -96,7 +162,7 @@ class Grid extends Equatable {
     );
   }
 
-  Grid addBoundary(BoundaryElement boundary) {
+  Grid addBoundary(GridBoundary boundary) {
     return Grid(
       lengthInches: lengthInches,
       widthInches: widthInches,
@@ -105,7 +171,7 @@ class Grid extends Equatable {
     );
   }
 
-  Grid removeBoundary(BoundaryElement boundary) {
+  Grid removeBoundary(GridBoundary boundary) {
     return Grid(
       lengthInches: lengthInches,
       widthInches: widthInches,
@@ -118,7 +184,7 @@ class Grid extends Equatable {
     double? lengthInches,
     double? widthInches,
     List<GridObject>? objects,
-    List<BoundaryElement>? boundaries,
+    List<GridBoundary>? boundaries,
   }) {
     return Grid(
       lengthInches: lengthInches ?? this.lengthInches,

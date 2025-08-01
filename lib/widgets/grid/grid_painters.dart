@@ -55,7 +55,7 @@ class GridAreaPainter extends CustomPainter {
   final Color majorGridBorderColor;
   final double gridWidth;
   final double gridHeight;
-  final List<BoundaryElement> boundaries;
+  final List<GridBoundary> boundaries;
 
   GridAreaPainter({
     required this.grid,
@@ -112,7 +112,7 @@ class GridAreaPainter extends CustomPainter {
       Paint paint;
       if (boundary.type == 'door') {
         paint = Paint()
-          ..color = Colors.brown
+          ..color = Colors.orange
           ..strokeWidth = 7
           ..style = PaintingStyle.stroke;
       } else {
@@ -193,10 +193,15 @@ class BoundaryPreviewPainter extends CustomPainter {
     Paint paint;
     if (type == 'door') {
       paint = Paint()
-        ..color = Colors.brown // fully opaque
+        ..color = Colors.orange // fully opaque
         ..strokeWidth = 10
         ..style = PaintingStyle.stroke;
-      canvas.drawLine(Offset(x, y), Offset(x2, y2), paint);
+      // Show a smaller preview segment that follows the cursor
+      final previewLength = 60.0; // Show 60 pixels of preview
+      final totalLength = (Offset(x2, y2) - Offset(x, y)).distance;
+      final direction = (Offset(x2, y2) - Offset(x, y)) / totalLength;
+      final previewEnd = Offset(x, y) + direction * previewLength;
+      canvas.drawLine(Offset(x, y), previewEnd, paint);
     } else {
       paint = Paint()
         ..color = Colors.blue // fully opaque
@@ -204,11 +209,14 @@ class BoundaryPreviewPainter extends CustomPainter {
         ..style = PaintingStyle.stroke;
       const dashWidth = 8.0;
       const dashSpace = 6.0;
+      // Show a smaller preview segment for windows too
+      final previewLength = 60.0;
       final totalLength = (Offset(x2, y2) - Offset(x, y)).distance;
       final direction = (Offset(x2, y2) - Offset(x, y)) / totalLength;
+      final previewEnd = Offset(x, y) + direction * previewLength;
       double drawn = 0;
-      while (drawn < totalLength) {
-        final currentDash = drawn + dashWidth < totalLength ? dashWidth : totalLength - drawn;
+      while (drawn < previewLength) {
+        final currentDash = drawn + dashWidth < previewLength ? dashWidth : previewLength - drawn;
         final p1 = Offset(x, y) + direction * drawn;
         final p2 = Offset(x, y) + direction * (drawn + currentDash);
         canvas.drawLine(p1, p2, paint);

@@ -21,7 +21,7 @@ class _HomeScreenState extends State<HomeScreen> {
   Grid? _currentGrid;
   double _rotationZ = -0.7; // Initial Y rotation for the grid
   List<GridObject> _placedObjects = [];
-  List<BoundaryElement> _boundaries = [];
+  List<GridBoundary> _boundaries = [];
   bool _isAutoPlacing = false;
   Key _gridWidgetKey = UniqueKey();
   // Mode: 'object' or 'border'
@@ -75,7 +75,7 @@ class _HomeScreenState extends State<HomeScreen> {
     });
   }
 
-  void _handleAddBoundary(BoundaryElement boundary) {
+  void _handleAddBoundary(GridBoundary boundary) {
     setState(() {
       if (!_boundaries.contains(boundary)) {
         _boundaries.add(boundary);
@@ -88,7 +88,7 @@ class _HomeScreenState extends State<HomeScreen> {
     });
   }
 
-  void _handleRemoveBoundary(BoundaryElement boundary) {
+  void _handleRemoveBoundary(GridBoundary boundary) {
     setState(() {
       _boundaries.remove(boundary);
       _gridWidgetKey = UniqueKey(); // Force GridWidget to rebuild
@@ -166,7 +166,6 @@ class _HomeScreenState extends State<HomeScreen> {
                         setState(() {
                           _placedObjects = [];
                           _boundaries = [];
-                          _currentGrid = _currentGrid?.copyWith(objects: [], boundaries: []);
                           _gridWidgetKey = UniqueKey(); // Force GridWidget to rebuild
                         });
                       },
@@ -232,9 +231,8 @@ class _HomeScreenState extends State<HomeScreen> {
                       padding: const EdgeInsets.all(12),
                       child: GridWidget(
                         key: _gridWidgetKey,
-                        grid: _currentGrid!.copyWith(boundaries: _boundaries),
+                        grid: _currentGrid!.copyWith(objects: _placedObjects, boundaries: _boundaries),
                         rotationZ: _rotationZ,
-                        objects: _placedObjects,
                         onObjectDropped: (row, col, type, icon, [rotation = 0]) => _handleObjectDropped(row, col, type, icon, rotation),
                         boundaryMode: _mode == 'object' ? 'none' : _selectedBoundaryType,
                         onAddBoundary: _handleAddBoundary,

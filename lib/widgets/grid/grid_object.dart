@@ -41,4 +41,52 @@ class GridObjectWidget extends StatelessWidget {
       ),
     );
   }
+}
+
+class GridBoundaryWidget extends StatelessWidget {
+  final GridBoundary boundary;
+  final double cellInchSize;
+
+  const GridBoundaryWidget({
+    super.key,
+    required this.boundary,
+    required this.cellInchSize,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    // Use polygon geometry for rendering boundaries
+    final poly = boundary.getTransformedPolygon();
+    final bounds = getPolygonBounds(poly);
+    final double left = bounds['minX']! * cellInchSize;
+    final double top = bounds['minY']! * cellInchSize;
+    final double boundaryWidth = (bounds['maxX']! - bounds['minX']!) * cellInchSize;
+    final double boundaryHeight = (bounds['maxY']! - bounds['minY']!) * cellInchSize;
+    
+    return Positioned(
+      left: left,
+      top: top,
+      child: Container(
+        width: boundaryWidth,
+        height: boundaryHeight,
+        decoration: BoxDecoration(
+          border: Border.all(
+            color: boundary.type == 'door' ? Colors.orange : Colors.blue,
+            width: 2,
+          ),
+          shape: BoxShape.rectangle,
+          color: boundary.type == 'door' 
+            ? Colors.orange.withValues(alpha: 0.3)
+            : Colors.blue.withValues(alpha: 0.3),
+        ),
+        child: Center(
+          child: Icon(
+            boundary.icon,
+            size: min(boundaryWidth, boundaryHeight) * 0.8,
+            color: boundary.type == 'door' ? Colors.orange : Colors.blue,
+          ),
+        ),
+      ),
+    );
+  }
 } 

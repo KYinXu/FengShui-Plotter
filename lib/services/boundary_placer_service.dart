@@ -11,6 +11,40 @@ class BoundaryPlacerService {
     return type == 'door' || type == 'window';
   }
 
+  /// Converts BoundaryElement to GridBoundary
+  static GridBoundary boundaryElementToGridBoundary(BoundaryElement element, IconData icon) {
+    return GridBoundary(
+      type: element.type,
+      row: element.row,
+      col: element.col,
+      side: element.side,
+      icon: icon,
+    );
+  }
+
+  /// Converts GridBoundary to BoundaryElement
+  static BoundaryElement gridBoundaryToBoundaryElement(GridBoundary boundary) {
+    return BoundaryElement(
+      type: boundary.type,
+      row: boundary.row,
+      col: boundary.col,
+      side: boundary.side,
+    );
+  }
+
+  /// Converts list of BoundaryElements to GridBoundaries
+  static List<GridBoundary> boundaryElementsToGridBoundaries(
+    List<BoundaryElement> elements,
+    IconData icon
+  ) {
+    return elements.map((e) => boundaryElementToGridBoundary(e, icon)).toList();
+  }
+
+  /// Converts list of GridBoundaries to BoundaryElements
+  static List<BoundaryElement> gridBoundariesToBoundaryElements(List<GridBoundary> boundaries) {
+    return boundaries.map((b) => gridBoundaryToBoundaryElement(b)).toList();
+  }
+
   /// Finds the nearest border side to a given position
   static Map<String, dynamic>? findNearestBorderSide(
     double col, 
@@ -137,6 +171,44 @@ class BoundaryPlacerService {
     return segment;
   }
 
+  /// Creates a GridBoundary segment for the given parameters
+  static List<GridBoundary> createGridBoundarySegment(
+    String type, 
+    String side, 
+    int startRow, 
+    int startCol,
+    IconData icon
+  ) {
+    List<GridBoundary> segment = [];
+    
+    for (int i = 0; i < _span; i++) {
+      switch (side) {
+        case 'top':
+        case 'bottom':
+          segment.add(GridBoundary(
+            type: type, 
+            row: startRow, 
+            col: startCol + i, 
+            side: side,
+            icon: icon,
+          ));
+          break;
+        case 'left':
+        case 'right':
+          segment.add(GridBoundary(
+            type: type, 
+            row: startRow + i, 
+            col: startCol, 
+            side: side,
+            icon: icon,
+          ));
+          break;
+      }
+    }
+    
+    return segment;
+  }
+
   /// Handles boundary placement from drag and drop
   static BoundaryPlacementResult? handleBoundaryDrop(
     String type,
@@ -161,6 +233,36 @@ class BoundaryPlacerService {
     final allExist = segment.every((b) => existingBoundaries.contains(b));
     
     return BoundaryPlacementResult(
+      segment: segment,
+      shouldRemove: allExist,
+    );
+  }
+
+  /// Handles boundary placement from drag and drop with GridBoundary objects
+  static GridBoundaryPlacementResult? handleGridBoundaryDrop(
+    String type,
+    double col,
+    double row,
+    int maxRow,
+    int maxCol,
+    List<GridBoundary> existingBoundaries,
+    IconData icon
+  ) {
+    final borderInfo = findNearestBorderSide(col, row, maxRow, maxCol);
+    if (borderInfo == null) return null;
+
+    final side = borderInfo['side'] as String;
+    final nearestRow = borderInfo['row'] as int;
+    final nearestCol = borderInfo['col'] as int;
+
+    if (!canPlaceBoundary(side, maxRow, maxCol)) return null;
+
+    final startPos = calculateBoundaryStart(side, nearestRow, nearestCol, maxRow, maxCol);
+    final segment = createGridBoundarySegment(type, side, startPos['row']!, startPos['col']!, icon);
+
+    final allExist = segment.every((b) => existingBoundaries.contains(b));
+    
+    return GridBoundaryPlacementResult(
       segment: segment,
       shouldRemove: allExist,
     );
@@ -205,6 +307,46 @@ class BoundaryPlacerService {
     );
   }
 
+  /// Handles boundary placement from click with GridBoundary objects
+  static GridBoundaryPlacementResult? handleGridBoundaryClick(
+    String type,
+    double col,
+    double row,
+    int maxRow,
+    int maxCol,
+    List<GridBoundary> existingBoundaries,
+    IconData icon
+  ) {
+    final cellCol = col.floor();
+    final cellRow = row.floor();
+    final dx = col - cellCol;
+    final dy = row - cellRow;
+
+    // Find nearest edge
+    double minDist = 1.0;
+    String? side;
+    if (dx < _edgeThreshold) { minDist = dx; side = 'left'; }
+    if (1 - dx < minDist) { minDist = 1 - dx; side = 'right'; }
+    if (dy < minDist) { minDist = dy; side = 'top'; }
+    if (1 - dy < minDist) { minDist = 1 - dy; side = 'bottom'; }
+
+    if (side == null || minDist >= _edgeThreshold) return null;
+
+    if (!canPlaceBoundary(side, maxRow, maxCol)) return null;
+
+    if (!isOuterEdge(side, cellRow, cellCol, maxRow, maxCol)) return null;
+
+    final startPos = calculateBoundaryStart(side, cellRow, cellCol, maxRow, maxCol);
+    final segment = createGridBoundarySegment(type, side, startPos['row']!, startPos['col']!, icon);
+
+    final allExist = segment.every((b) => existingBoundaries.contains(b));
+    
+    return GridBoundaryPlacementResult(
+      segment: segment,
+      shouldRemove: allExist,
+    );
+  }
+
   /// Calculates preview position for boundary placement
   static BoundaryPreviewInfo? calculateBoundaryPreview(
     double col,
@@ -224,10 +366,43 @@ class BoundaryPlacerService {
 
     final startPos = calculateBoundaryStart(side, nearestRow, nearestCol, maxRow, maxCol);
     
-    final x = startPos['col']! * cellInchSize;
-    final y = startPos['row']! * cellInchSize;
-    final x2 = (side == 'top' || side == 'bottom') ? (startPos['col']! + _span) * cellInchSize : x;
-    final y2 = (side == 'left' || side == 'right') ? (startPos['row']! + _span) * cellInchSize : y;
+    // Use the cursor position for the start of the preview
+    final cursorX = col * cellInchSize;
+    final cursorY = row * cellInchSize;
+    
+    // Calculate the preview based on the side and cursor position
+    double x, y, x2, y2;
+    switch (side) {
+      case 'top':
+        x = cursorX;
+        y = 0;
+        x2 = cursorX + cellInchSize;
+        y2 = 0;
+        break;
+      case 'bottom':
+        x = cursorX;
+        y = (maxRow - 1) * cellInchSize;
+        x2 = cursorX + cellInchSize;
+        y2 = (maxRow - 1) * cellInchSize;
+        break;
+      case 'left':
+        x = 0;
+        y = cursorY;
+        x2 = 0;
+        y2 = cursorY + cellInchSize;
+        break;
+      case 'right':
+        x = (maxCol - 1) * cellInchSize;
+        y = cursorY;
+        x2 = (maxCol - 1) * cellInchSize;
+        y2 = cursorY + cellInchSize;
+        break;
+      default:
+        x = startPos['col']! * cellInchSize;
+        y = startPos['row']! * cellInchSize;
+        x2 = (side == 'top' || side == 'bottom') ? (startPos['col']! + _span) * cellInchSize : x;
+        y2 = (side == 'left' || side == 'right') ? (startPos['row']! + _span) * cellInchSize : y;
+    }
 
     return BoundaryPreviewInfo(
       side: side,
@@ -245,6 +420,17 @@ class BoundaryPlacementResult {
   final bool shouldRemove;
 
   const BoundaryPlacementResult({
+    required this.segment,
+    required this.shouldRemove,
+  });
+}
+
+/// Result of GridBoundary placement operation
+class GridBoundaryPlacementResult {
+  final List<GridBoundary> segment;
+  final bool shouldRemove;
+
+  const GridBoundaryPlacementResult({
     required this.segment,
     required this.shouldRemove,
   });
