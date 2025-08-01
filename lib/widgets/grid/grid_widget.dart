@@ -168,16 +168,27 @@ class GridWidgetState extends State<GridWidget> {
         if (gridLocal != null) {
           double col = gridLocal.dx / cellInchSize;
           double row = gridLocal.dy / cellInchSize;
+          
+          // Debug output to see coordinate conversion
+          print('GridWidget: raw pointer=${pointerOffset}');
+          print('GridWidget: local=${local}');
+          print('GridWidget: gridLocalPointer=${gridLocalPointer}');
+          print('GridWidget: gridLocal=${gridLocal}');
+          print('GridWidget: col=$col, row=$row');
+          print('GridWidget: offsetX=$offsetX, offsetY=$offsetY');
+          
           final gridW = widget.grid.widthInches.floor();
           final gridH = widget.grid.lengthInches.floor();
           
           final previewInfo = BoundaryPlacerService.calculateBoundaryPreview(
-            col, row, gridH, gridW, cellInchSize
+            col, row, gridH, gridW, cellInchSize, type
           );
           
           if (previewInfo != null) {
-            // For boundaries, use the cursor position for preview
-            _updatePreview(Offset(col, row), type, data['icon']);
+            // For boundaries, use the snapped grid position for preview
+            final int snappedCol = col.round();
+            final int snappedRow = row.round();
+            _updatePreview(Offset(snappedCol.toDouble(), snappedRow.toDouble()), type, data['icon']);
           } else {
             _updatePreview(null, null, null);
           }
@@ -395,26 +406,26 @@ class GridWidgetState extends State<GridWidget> {
                         final double row = _previewCell!.dy;
                         
                         final previewInfo = BoundaryPlacerService.calculateBoundaryPreview(
-                          col, row, gridH, gridW, cellInchSize
+                          col, row, gridH, gridW, cellInchSize, _previewType!
                         );
                         
                         if (previewInfo != null) {
                           return Positioned(
-                            left: _previewCell!.dx * cellInchSize - 60, // Center around cursor
-                            top: _previewCell!.dy * cellInchSize - 60,
+                            left: previewInfo.x,
+                            top: previewInfo.y,
                             child: IgnorePointer(
                               child: RepaintBoundary(
-                                child: Container(
-                                  width: 120,
-                                  height: 120,
+                                child: SizedBox(
+                                  width: previewInfo.x2 - previewInfo.x,
+                                  height: previewInfo.y2 - previewInfo.y,
                                   child: CustomPaint(
                                     painter: BoundaryPreviewPainter(
                                       type: _previewType!,
                                       side: previewInfo.side,
-                                      x: 60, // Center within the preview area
-                                      y: 60,
-                                      x2: previewInfo.side == 'top' || previewInfo.side == 'bottom' ? 120 : 60,
-                                      y2: previewInfo.side == 'left' || previewInfo.side == 'right' ? 120 : 60,
+                                      x: 0,
+                                      y: 0,
+                                      x2: previewInfo.x2 - previewInfo.x,
+                                      y2: previewInfo.y2 - previewInfo.y,
                                     ),
                                   ),
                                 ),

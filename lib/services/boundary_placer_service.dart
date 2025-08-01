@@ -53,24 +53,24 @@ class BoundaryPlacerService {
     int maxCol
   ) {
     final borderChecks = [
-      {'side': 'top', 'row': 0, 'col': col, 'dist': (row - 0).abs()},
-      {'side': 'bottom', 'row': maxRow - 1, 'col': col, 'dist': (row - (maxRow - 1)).abs()},
-      {'side': 'left', 'row': row, 'col': 0, 'dist': (col - 0).abs()},
-      {'side': 'right', 'row': row, 'col': maxCol - 1, 'dist': (col - (maxCol - 1)).abs()},
+      {'side': 'top', 'row': 0, 'col': col.round(), 'dist': (row - 0).abs()},
+      {'side': 'bottom', 'row': maxRow - 1, 'col': col.round(), 'dist': (row - (maxRow - 1)).abs()},
+      {'side': 'left', 'row': row.round(), 'col': 0, 'dist': (col - 0).abs()},
+      {'side': 'right', 'row': row.round(), 'col': maxCol - 1, 'dist': (col - (maxCol - 1)).abs()},
     ];
 
     double minDist = double.infinity;
     String? nearestSide;
-    double nearestRow = row;
-    double nearestCol = col;
+    int nearestRow = row.round();
+    int nearestCol = col.round();
 
     for (final check in borderChecks) {
       final dist = check['dist'] as double;
       if (dist < minDist) {
         minDist = dist;
         nearestSide = check['side'] as String;
-        nearestRow = check['row'] as double;
-        nearestCol = check['col'] as double;
+        nearestRow = check['row'] as int;
+        nearestCol = check['col'] as int;
       }
     }
 
@@ -248,7 +248,11 @@ class BoundaryPlacerService {
     List<GridBoundary> existingBoundaries,
     IconData icon
   ) {
-    final borderInfo = findNearestBorderSide(col, row, maxRow, maxCol);
+    // Snap to nearest grid cell for placement
+    final int snappedCol = col.round();
+    final int snappedRow = row.round();
+    
+    final borderInfo = findNearestBorderSide(snappedCol.toDouble(), snappedRow.toDouble(), maxRow, maxCol);
     if (borderInfo == null) return null;
 
     final side = borderInfo['side'] as String;
@@ -353,8 +357,11 @@ class BoundaryPlacerService {
     double row,
     int maxRow,
     int maxCol,
-    double cellInchSize
+    double cellInchSize,
+    String boundaryType
   ) {
+    print('BoundaryService: received col=$col, row=$row, maxRow=$maxRow, maxCol=$maxCol');
+    
     final borderInfo = findNearestBorderSide(col, row, maxRow, maxCol);
     if (borderInfo == null) return null;
 
@@ -362,38 +369,55 @@ class BoundaryPlacerService {
     final nearestRow = borderInfo['row'] as int;
     final nearestCol = borderInfo['col'] as int;
 
+    print('BoundaryService: side=$side, nearestRow=$nearestRow, nearestCol=$nearestCol');
+
     if (!canPlaceBoundary(side, maxRow, maxCol)) return null;
 
-    // Use the cursor position directly for preview
-    final cursorX = col * cellInchSize;
-    final cursorY = row * cellInchSize;
+    // Snap to nearest grid cell
+    final int snappedCol = col.round();
+    final int snappedRow = row.round();
     
-    // Calculate the preview based on the side and cursor position
+    print('BoundaryService: snappedCol=$snappedCol, snappedRow=$snappedRow');
+    
+    // Get boundary configuration
+    final config = BoundaryRegistry.getConfig(boundaryType);
+    if (config == null) {
+      print('BoundaryService: No config found for type=$boundaryType');
+      return null;
+    }
+    
+    // Use the configuration dimensions
+    final double length = config.length;
+    final double thickness = config.thickness;
+    
+    print('BoundaryService: using length=$length, thickness=$thickness');
+    
+    // Calculate the preview based on the snapped grid position
     double x, y, x2, y2;
     switch (side) {
       case 'top':
-        x = cursorX;
+        x = snappedCol * cellInchSize;
         y = 0;
-        x2 = cursorX + cellInchSize;
-        y2 = 0;
+        x2 = x + (length * cellInchSize);
+        y2 = thickness * cellInchSize;
         break;
       case 'bottom':
-        x = cursorX;
+        x = snappedCol * cellInchSize;
         y = (maxRow - 1) * cellInchSize;
-        x2 = cursorX + cellInchSize;
-        y2 = (maxRow - 1) * cellInchSize;
+        x2 = x + (length * cellInchSize);
+        y2 = y + (thickness * cellInchSize);
         break;
       case 'left':
         x = 0;
-        y = cursorY;
-        x2 = 0;
-        y2 = cursorY + cellInchSize;
+        y = snappedRow * cellInchSize;
+        x2 = thickness * cellInchSize;
+        y2 = y + (length * cellInchSize);
         break;
       case 'right':
         x = (maxCol - 1) * cellInchSize;
-        y = cursorY;
-        x2 = (maxCol - 1) * cellInchSize;
-        y2 = cursorY + cellInchSize;
+        y = snappedRow * cellInchSize;
+        x2 = x + (thickness * cellInchSize);
+        y2 = y + (length * cellInchSize);
         break;
       default:
         x = nearestCol * cellInchSize;
@@ -401,6 +425,8 @@ class BoundaryPlacerService {
         x2 = (side == 'top' || side == 'bottom') ? (nearestCol + 1) * cellInchSize : x;
         y2 = (side == 'left' || side == 'right') ? (nearestRow + 1) * cellInchSize : y;
     }
+
+    print('BoundaryService: preview x=$x, y=$y, x2=$x2, y2=$y2');
 
     return BoundaryPreviewInfo(
       side: side,

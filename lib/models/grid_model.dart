@@ -3,6 +3,72 @@ import 'package:flutter/material.dart';
 import 'package:feng_shui_plotter/widgets/objects/object_item.dart';
 import 'dart:math';
 
+/// Configuration for different boundary types
+class BoundaryConfig {
+  final String type;
+  final double length; // Length in inches
+  final double thickness; // Thickness in inches
+  final IconData icon;
+  final Color color;
+
+  const BoundaryConfig({
+    required this.type,
+    required this.length,
+    required this.thickness,
+    required this.icon,
+    required this.color,
+  });
+}
+
+/// Registry of boundary configurations
+class BoundaryRegistry {
+  static const Map<String, BoundaryConfig> _configs = {
+    'door': BoundaryConfig(
+      type: 'door',
+      length: 30.0, // 30 inches
+      thickness: 0.1, // Thin line
+      icon: Icons.door_front_door,
+      color: Colors.orange,
+    ),
+    'window': BoundaryConfig(
+      type: 'window',
+      length: 24.0, // 24 inches
+      thickness: 0.1, // Thin line
+      icon: Icons.window,
+      color: Colors.blue,
+    ),
+    'large_door': BoundaryConfig(
+      type: 'large_door',
+      length: 36.0, // 36 inches
+      thickness: 0.1, // Thin line
+      icon: Icons.door_front_door,
+      color: Colors.orange,
+    ),
+    'small_window': BoundaryConfig(
+      type: 'small_window',
+      length: 18.0, // 18 inches
+      thickness: 0.1, // Thin line
+      icon: Icons.window,
+      color: Colors.blue,
+    ),
+  };
+
+  /// Get boundary configuration by type
+  static BoundaryConfig? getConfig(String type) {
+    return _configs[type];
+  }
+
+  /// Get all available boundary types
+  static List<String> getAvailableTypes() {
+    return _configs.keys.toList();
+  }
+
+  /// Add a new boundary configuration
+  static void addConfig(BoundaryConfig config) {
+    _configs[config.type] = config;
+  }
+}
+
 class GridObject {
   final String type;
   final int row;
@@ -52,13 +118,22 @@ class GridBoundary {
 
   /// Returns the polygon for this boundary (a line segment)
   List<Offset> getTransformedPolygon() {
-    const double thickness = 0.1; // Thin line for boundaries
-    const double length = 1.0; // One grid cell length
+    final config = BoundaryRegistry.getConfig(type);
+    if (config == null) {
+      // Fallback to default values
+      const double thickness = 0.1;
+      const double length = 30.0;
+      return _createPolygon(length, thickness);
+    }
     
+    return _createPolygon(config.length, config.thickness);
+  }
+
+  /// Creates a polygon with the given dimensions
+  List<Offset> _createPolygon(double length, double thickness) {
     List<Offset> poly;
     switch (side) {
       case 'top':
-      case 'bottom':
         poly = [
           Offset(0, 0),
           Offset(length, 0),
@@ -66,13 +141,28 @@ class GridBoundary {
           Offset(0, thickness),
         ];
         break;
+      case 'bottom':
+        poly = [
+          Offset(0, 1 - thickness),
+          Offset(length, 1 - thickness),
+          Offset(length, 1),
+          Offset(0, 1),
+        ];
+        break;
       case 'left':
-      case 'right':
         poly = [
           Offset(0, 0),
           Offset(thickness, 0),
           Offset(thickness, length),
           Offset(0, length),
+        ];
+        break;
+      case 'right':
+        poly = [
+          Offset(1 - thickness, 0),
+          Offset(1, 0),
+          Offset(1, length),
+          Offset(1 - thickness, length),
         ];
         break;
       default:
