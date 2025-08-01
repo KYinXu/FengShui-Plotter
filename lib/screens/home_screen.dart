@@ -19,7 +19,6 @@ class HomeScreen extends StatefulWidget {
 
 class _HomeScreenState extends State<HomeScreen> {
   Grid? _currentGrid;
-  double _rotationZ = -0.7; // Initial Y rotation for the grid
   List<GridObject> _placedObjects = [];
   List<GridBoundary> _boundaries = [];
   bool _isAutoPlacing = false;
@@ -57,33 +56,16 @@ class _HomeScreenState extends State<HomeScreen> {
       final minY = poly.map((p) => p.dy).reduce((a, b) => a < b ? a : b);
       final maxX = poly.map((p) => p.dx).reduce((a, b) => a > b ? a : b);
       final maxY = poly.map((p) => p.dy).reduce((a, b) => a > b ? a : b);
-      print('Placed object bounds: minX=$minX, minY=$minY, maxX=$maxX, maxY=$maxY');
-      print('Placed objects: \n');
-      for (final o in _placedObjects) {
-        print('type=${o.type}, row=${o.row}, col=${o.col}, rot=${o.rotation}');
-      }
-      print('Boundaries after object drop: \n');
-      for (final b in _boundaries) {
-        print(b);
-      }
     });
   }
 
-  void _onRotationChanged(double rotation) {
-    setState(() {
-      _rotationZ = rotation;
-    });
-  }
+
 
   void _handleAddBoundary(GridBoundary boundary) {
     setState(() {
       if (!_boundaries.contains(boundary)) {
         _boundaries.add(boundary);
         _gridWidgetKey = UniqueKey(); // Force GridWidget to rebuild
-      }
-      print('Boundaries after add: \n');
-      for (final b in _boundaries) {
-        print(b);
       }
     });
   }
@@ -92,10 +74,6 @@ class _HomeScreenState extends State<HomeScreen> {
     setState(() {
       _boundaries.remove(boundary);
       _gridWidgetKey = UniqueKey(); // Force GridWidget to rebuild
-      print('Boundaries after remove: \n');
-      for (final b in _boundaries) {
-        print(b);
-      }
     });
   }
 
@@ -220,35 +198,26 @@ class _HomeScreenState extends State<HomeScreen> {
                     AppConstants.defaultPadding,
                     AppConstants.defaultPadding,
                   ),
-                  child: RotationControlWidget(
-                    initialRotation: -0.7,
-                    onRotationChanged: _onRotationChanged,
-                    child: Container(
-                      decoration: BoxDecoration(
-                        color: Theme.of(context).colorScheme.primary,
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                      padding: const EdgeInsets.all(12),
-                      child: GridWidget(
-                        key: _gridWidgetKey,
-                        grid: _currentGrid!.copyWith(objects: _placedObjects, boundaries: _boundaries),
-                        rotationZ: _rotationZ,
-                        onObjectDropped: (row, col, type, icon, [rotation = 0]) => _handleObjectDropped(row, col, type, icon, rotation),
-                        boundaryMode: _mode == 'object' ? 'none' : _selectedBoundaryType,
-                        onAddBoundary: _handleAddBoundary,
-                        onRemoveBoundary: _handleRemoveBoundary,
-                      ),
+                  child: Container(
+                    decoration: BoxDecoration(
+                      color: Theme.of(context).colorScheme.primary,
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    padding: const EdgeInsets.all(12),
+                    child: GridWidget(
+                      key: _gridWidgetKey,
+                      grid: _currentGrid!.copyWith(objects: _placedObjects, boundaries: _boundaries),
+                      onObjectDropped: (row, col, type, icon, [rotation = 0]) => _handleObjectDropped(row, col, type, icon, rotation),
+                      boundaryMode: _mode == 'object' ? 'none' : _selectedBoundaryType,
+                      onAddBoundary: _handleAddBoundary,
+                      onRemoveBoundary: _handleRemoveBoundary,
                     ),
                   ),
                 ),
               ),
             ] else
               const Expanded(child: SizedBox()),
-            if (_currentGrid != null)
-              RotationSlider(
-                rotation: _rotationZ,
-                onRotationChanged: _onRotationChanged,
-              ),
+
           ],
         ),
       ),

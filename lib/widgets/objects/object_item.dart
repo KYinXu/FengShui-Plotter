@@ -26,7 +26,7 @@ class ObjectItem extends StatelessWidget {
               feedback: Icon(icon, size: 28, color: Colors.red),
               childWhenDragging: Icon(icon, size: 28, color: Colors.grey.shade300),
               onDragStarted: () {
-                print('Drag started for: $label');
+            
                 if (onDragStarted != null) onDragStarted!();
               },
               child: Icon(icon, size: 28, color: Theme.of(context).colorScheme.primary),

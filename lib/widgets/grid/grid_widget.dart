@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import '../../constants/app_constants.dart';
 import '../../models/grid_model.dart';
-import 'package:vector_math/vector_math_64.dart' as vm;
 import 'dart:math';
 import '../objects/object_item.dart';
 import 'grid_object.dart';
@@ -13,9 +12,7 @@ import '../../services/boundary_placer_service.dart';
 
 class GridWidget extends StatefulWidget {
   final Grid grid;
-  final double rotationX;
-  final double rotationY;
-  final double rotationZ;
+
 
   final void Function(int row, int col, String type, IconData icon, [int rotation])? onObjectDropped;
   final String boundaryMode; // 'none', 'door', 'window'
@@ -25,9 +22,6 @@ class GridWidget extends StatefulWidget {
   const GridWidget({
     super.key,
     required this.grid,
-    this.rotationX = 0.3,
-    this.rotationY = 0.0,
-    this.rotationZ = 0.0,
     this.onObjectDropped,
     this.boundaryMode = 'none',
     this.onAddBoundary,
@@ -163,15 +157,11 @@ class GridWidgetState extends State<GridWidget> {
         if (box == null) return;
         final Offset local = box.globalToLocal(pointerOffset);
         final Offset gridLocalPointer = local - Offset(offsetX, offsetY);
-        final Offset? gridLocal = _pickGridCell3D(
+        final Offset? gridLocal = _pickGridCell2D(
           pointer: gridLocalPointer,
           gridWidth: gridWidth,
           gridHeight: gridHeightPx,
           cellInchSize: cellInchSize,
-          rotationZ: widget.rotationZ,
-          scale: _scale,
-          rotateX: widget.rotationX,
-          rotateY: widget.rotationY,
         );
         if (gridLocal != null) {
           double col = gridLocal.dx / cellInchSize;
@@ -186,11 +176,6 @@ class GridWidgetState extends State<GridWidget> {
           if (previewInfo != null) {
             // For boundaries, use the cursor position for preview
             _updatePreview(Offset(col, row), type, data['icon']);
-            // Diagnostic print for boundaries during drag
-            print('Boundaries during drag:');
-            for (final b in widget.grid.boundaries) {
-              print(b);
-            }
           } else {
             _updatePreview(null, null, null);
           }
@@ -213,15 +198,11 @@ class GridWidgetState extends State<GridWidget> {
       if (box == null) return;
       final Offset local = box.globalToLocal(pointerOffset);
       final Offset gridLocalPointer = local - Offset(offsetX, offsetY);
-      final Offset? gridLocal = _pickGridCell3D(
+      final Offset? gridLocal = _pickGridCell2D(
         pointer: gridLocalPointer,
         gridWidth: gridWidth,
         gridHeight: gridHeightPx,
         cellInchSize: cellInchSize,
-        rotationZ: widget.rotationZ,
-        scale: _scale,
-        rotateX: widget.rotationX,
-        rotateY: widget.rotationY,
       );
       if (gridLocal != null) {
         double col = gridLocal.dx / cellInchSize;
@@ -296,8 +277,6 @@ class GridWidgetState extends State<GridWidget> {
 
         Widget gridContent = DragTarget<Map<String, dynamic>>(
           onWillAccept: (data) {
-            print('onWillAccept called with data:');
-            print(data);
             return true;
           },
           onAcceptWithDetails: (details) {
@@ -305,16 +284,12 @@ class GridWidgetState extends State<GridWidget> {
             final Offset local = box.globalToLocal(details.offset);
             // Adjust for centering offset
             final Offset gridLocalPointer = local - Offset(offsetX, offsetY);
-            // Use inverse transform for accurate picking
-            final Offset? gridLocal = _pickGridCell3D(
+            // Use simple 2D picking
+            final Offset? gridLocal = _pickGridCell2D(
               pointer: gridLocalPointer,
               gridWidth: gridWidth,
               gridHeight: gridHeightPx,
               cellInchSize: cellInchSize,
-              rotationZ: widget.rotationZ,
-              scale: _scale,
-              rotateX: widget.rotationX,
-              rotateY: widget.rotationY,
             );
             if (gridLocal == null) {
               return;
@@ -334,19 +309,17 @@ class GridWidgetState extends State<GridWidget> {
               if (result != null) {
                 if (result.shouldRemove) {
                   if (widget.onRemoveBoundary != null) {
-                    for (final b in result.segment) {
-                      widget.onRemoveBoundary!(b);
-                      print('Removed ${b.type} at row=${b.row}, col=${b.col}, side=${b.side}');
-                    }
+                                          for (final b in result.segment) {
+                        widget.onRemoveBoundary!(b);
+                      }
                   }
                 } else {
                   if (widget.onAddBoundary != null) {
-                    for (final b in result.segment) {
-                      if (!widget.grid.boundaries.contains(b)) {
-                        widget.onAddBoundary!(b);
-                        print('Boundary added: $b');
+                                          for (final b in result.segment) {
+                        if (!widget.grid.boundaries.contains(b)) {
+                          widget.onAddBoundary!(b);
+                        }
                       }
-                    }
                   }
                 }
               }
@@ -517,7 +490,6 @@ class GridWidgetState extends State<GridWidget> {
                     if (widget.onRemoveBoundary != null || true) {
                       for (final b in result.segment) {
                         widget.onRemoveBoundary!(b);
-                        print('Removed ${b.type} at row=${b.row}, col=${b.col}, side=${b.side}');
                       }
                     }
                   } else {
@@ -525,7 +497,6 @@ class GridWidgetState extends State<GridWidget> {
                       for (final b in result.segment) {
                         if (!widget.grid.boundaries.contains(b)) {
                           widget.onAddBoundary!(b);
-                          print('Placed ${b.type} at row=${b.row}, col=${b.col}, side=${b.side}');
                         }
                       }
                     }
@@ -537,35 +508,12 @@ class GridWidgetState extends State<GridWidget> {
           );
         }
 
-        // Calculate translation to move the center of the visible grid to the origin
-        final double gridW = cellInchSize * totalColsInches;
-        final double gridH = cellInchSize * totalRowsInches;
-        // final vm.Matrix4 centerMatrix = vm.Matrix4.identity()
-        //   ..translate(-gridW / 2, -gridH / 2);
-        // final vm.Matrix4 uncenterMatrix = vm.Matrix4.identity()
-        //   ..translate(gridW / 2, gridH / 2);
-
-        final vm.Matrix4 transform = vm.Matrix4.identity()
-          ..translate(gridW / 2, gridH / 2)
-          ..rotateZ(widget.rotationZ)
-          ..rotateX(widget.rotationX)
-          ..rotateY(widget.rotationY)
-          ..scale(_scale)
-          ..translate(-gridW / 2, -gridH / 2);
-
-        // final vm.Matrix4 centerMatrix = vm.Matrix4.identity()
-        //   ..translate(-gridW / 2, -gridH / 2);
-        // final vm.Matrix4 uncenterMatrix = vm.Matrix4.identity()
-        //   ..translate(gridW / 2, gridH / 2);
-        final transformedGrid = Center(
-          child: Transform(
-            alignment: Alignment.topLeft,
-            transform: transform,
-            child: SizedBox(
-              width: gridWidth,
-              height: gridHeightPx,
-              child: gridContent,
-            ),
+        // Simple 2D grid - no transformations needed
+        final gridWidget = Center(
+          child: SizedBox(
+            width: gridWidth,
+            height: gridHeightPx,
+            child: gridContent,
           ),
         );
 
@@ -588,12 +536,12 @@ class GridWidgetState extends State<GridWidget> {
                   final objW = dims['width'] ?? 1;
                   final objH = dims['height'] ?? 1;
                   if (objW > gridW || objH > gridH) {
-                    print('Rotation blocked: object too large for grid after rotation.');
+                    // Rotation blocked: object too large for grid after rotation
                   } else {
-                    print('Rotated object to ${_dragRotation} degrees');
+                    // Rotated object to ${_dragRotation} degrees
                   }
                 } else {
-                  print('Rotated object to ${_dragRotation} degrees');
+                  // Rotated object to ${_dragRotation} degrees
                 }
                 // If there is a preview in progress, re-trigger preview snapping after rotation
                 if (_lastPreviewData != null && _lastPreviewPointerOffset != null &&
@@ -611,37 +559,25 @@ class GridWidgetState extends State<GridWidget> {
                 }
               }
             },
-            child: transformedGrid,
+            child: gridWidget,
           ),
         );
       },
     );
   }
 
-  // Helper function for pointer-to-grid mapping using inverse of rendering transform
-  Offset? _pickGridCell3D({
+  // Helper function for pointer-to-grid mapping using simple 2D positioning
+  Offset? _pickGridCell2D({
     required Offset pointer,
     required double gridWidth,
     required double gridHeight,
     required double cellInchSize,
-    required double rotationZ,
-    required double scale,
-    required double rotateX,
-    required double rotateY,
   }) {
-    final vm.Matrix4 transform = vm.Matrix4.identity()
-      ..translate(gridWidth / 2, gridHeight / 2)
-      ..rotateZ(rotationZ)
-      ..rotateX(rotateX)
-      ..rotateY(rotateY)
-      ..scale(scale)
-      ..translate(-gridWidth / 2, -gridHeight / 2);
-    final vm.Matrix4? inverse = vm.Matrix4.tryInvert(transform);
-    if (inverse == null) return null;
-    final vm.Vector3 pointer3 = vm.Vector3(pointer.dx, pointer.dy, 0);
-    final vm.Vector4 pointer4 = vm.Vector4(pointer.dx, pointer.dy, 0, 1);
-    final vm.Vector4 local4 = inverse.transform(pointer4);
-    final vm.Vector3 local3 = vm.Vector3(local4.x, local4.y, local4.z);
-    return Offset(local3.x, local3.y);
+    // Simple 2D mapping - no transformations needed
+    if (pointer.dx < 0 || pointer.dx > gridWidth || 
+        pointer.dy < 0 || pointer.dy > gridHeight) {
+      return null;
+    }
+    return pointer;
   }
 }
