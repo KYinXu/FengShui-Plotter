@@ -58,9 +58,11 @@ class GridWidgetState extends State<GridWidget> {
 
 // Sets the state of the preview according to any new updates
   void _updatePreview(Offset? cell, String? type, IconData? icon, [int? rotation]) {
+    // Only update if there's an actual change
     if (_previewCell == cell && _previewType == type && _previewIcon == icon && (rotation == null || _dragRotation == rotation)) {
       return;
     }
+    
     setState(() {
       _previewCell = cell;
       _previewType = type;
@@ -383,6 +385,7 @@ class GridWidgetState extends State<GridWidget> {
                 // Preview overlay
                 if (_previewCell != null && _previewType != null && _previewIcon != null)
                   Builder(
+                    key: ValueKey('preview-${_previewType}-${_previewCell!.dx.round()}-${_previewCell!.dy.round()}'),
                     builder: (context) {
                       // Always show a line preview for door/window types
                       if (_previewType == 'door' || _previewType == 'window') {
@@ -397,18 +400,23 @@ class GridWidgetState extends State<GridWidget> {
                         
                         if (previewInfo != null) {
                           return Positioned(
-                            left: 0,
-                            top: 0,
+                            left: _previewCell!.dx * cellInchSize - 60, // Center around cursor
+                            top: _previewCell!.dy * cellInchSize - 60,
                             child: IgnorePointer(
-                              child: CustomPaint(
-                                size: Size(gridW * cellInchSize, gridH * cellInchSize),
-                                painter: BoundaryPreviewPainter(
-                                  type: _previewType!,
-                                  side: previewInfo.side,
-                                  x: previewInfo.x,
-                                  y: previewInfo.y,
-                                  x2: previewInfo.x2,
-                                  y2: previewInfo.y2,
+                              child: RepaintBoundary(
+                                child: Container(
+                                  width: 120,
+                                  height: 120,
+                                  child: CustomPaint(
+                                    painter: BoundaryPreviewPainter(
+                                      type: _previewType!,
+                                      side: previewInfo.side,
+                                      x: 60, // Center within the preview area
+                                      y: 60,
+                                      x2: previewInfo.side == 'top' || previewInfo.side == 'bottom' ? 120 : 60,
+                                      y2: previewInfo.side == 'left' || previewInfo.side == 'right' ? 120 : 60,
+                                    ),
+                                  ),
                                 ),
                               ),
                             ),
@@ -420,24 +428,27 @@ class GridWidgetState extends State<GridWidget> {
                       final width = cellInchSize * (ObjectItem.getObjectDimensions(_previewType!)['width'] ?? 1);
                       final height = cellInchSize * (ObjectItem.getObjectDimensions(_previewType!)['height'] ?? 1);
                       return Positioned(
-                        left: _previewCell!.dx * cellInchSize,
-                        top: _previewCell!.dy * cellInchSize,
-                        child: Opacity(
-                          opacity: 0.5,
-                          child: Transform(
-                            alignment: Alignment.center,
-                            transform: Matrix4.identity()
-                              ..translate(-width / 2, -height / 2)
-                              ..rotateZ((_dragRotation % 360) * pi / 180.0),
-                            child: Container(
-                              width: width,
-                              height: height,
-                              decoration: BoxDecoration(
-                                border: Border.all(color: Colors.green, width: 3),
-                                shape: BoxShape.rectangle,
-                                color: Colors.red.withOpacity(0.2),
+                        left: _previewCell!.dx * cellInchSize - width / 2,
+                        top: _previewCell!.dy * cellInchSize - height / 2,
+                        child: IgnorePointer(
+                          child: RepaintBoundary(
+                            child: Opacity(
+                              opacity: 0.5,
+                              child: Transform(
+                                alignment: Alignment.center,
+                                transform: Matrix4.identity()
+                                  ..rotateZ((_dragRotation % 360) * pi / 180.0),
+                                child: Container(
+                                  width: width,
+                                  height: height,
+                                  decoration: BoxDecoration(
+                                    border: Border.all(color: Colors.green, width: 3),
+                                    shape: BoxShape.rectangle,
+                                    color: Colors.red.withOpacity(0.2),
+                                  ),
+                                  child: Icon(_previewIcon, size: cellInchSize * 8, color: Colors.red),
+                                ),
                               ),
-                              child: Icon(_previewIcon, size: cellInchSize * 8, color: Colors.red),
                             ),
                           ),
                         ),
@@ -454,62 +465,64 @@ class GridWidgetState extends State<GridWidget> {
         );
 
         // Overlay GestureDetector for edge clicks in boundary mode
-        if (widget.boundaryMode != 'none' || true) {
-          gridContent = GestureDetector(
-            behavior: HitTestBehavior.translucent,
-            onTapDown: (details) {
-              final RenderBox box = context.findRenderObject() as RenderBox;
-              final Offset local = box.globalToLocal(details.globalPosition);
-              final Offset gridLocal = local - Offset(offsetX, offsetY);
-              // Map to cell and edge
-              final double col = gridLocal.dx / cellInchSize;
-              final double row = gridLocal.dy / cellInchSize;
-              final int cellCol = col.floor();
-              final int cellRow = row.floor();
-              final double dx = col - cellCol;
-              final double dy = row - cellRow;
-              // Find nearest edge
-              double minDist = 1.0;
-              String? side;
-              if (dx < 0.2) { minDist = dx; side = 'left'; }
-              if (1 - dx < minDist) { minDist = 1 - dx; side = 'right'; }
-              if (dy < minDist) { minDist = dy; side = 'top'; }
-              if (1 - dy < minDist) { minDist = 1 - dy; side = 'bottom'; }
-              // Only allow if close enough to an edge
-              if (side != null && minDist < 0.2) {
-                final maxRow = widget.grid.lengthInches.floor();
-                final maxCol = widget.grid.widthInches.floor();
-                final type = widget.boundaryMode == 'door' ? 'door' : 'window';
-                
-                final result = BoundaryPlacerService.handleGridBoundaryClick(
-                  type, col, row, maxRow, maxCol, widget.grid.boundaries, Icons.door_front_door
-                );
-                
-                if (result != null) {
-                  if (result.shouldRemove) {
-                    if (widget.onRemoveBoundary != null || true) {
-                      for (final b in result.segment) {
-                        widget.onRemoveBoundary!(b);
-                      }
+        gridContent = GestureDetector(
+          behavior: HitTestBehavior.translucent,
+          onTapDown: (details) {
+            // Only handle clicks if in boundary mode
+            if (widget.boundaryMode == 'none') return;
+            
+            final RenderBox box = context.findRenderObject() as RenderBox;
+            final Offset local = box.globalToLocal(details.globalPosition);
+            final Offset gridLocal = local - Offset(offsetX, offsetY);
+            // Map to cell and edge
+            final double col = gridLocal.dx / cellInchSize;
+            final double row = gridLocal.dy / cellInchSize;
+            final int cellCol = col.floor();
+            final int cellRow = row.floor();
+            final double dx = col - cellCol;
+            final double dy = row - cellRow;
+            // Find nearest edge
+            double minDist = 1.0;
+            String? side;
+            if (dx < 0.2) { minDist = dx; side = 'left'; }
+            if (1 - dx < minDist) { minDist = 1 - dx; side = 'right'; }
+            if (dy < minDist) { minDist = dy; side = 'top'; }
+            if (1 - dy < minDist) { minDist = 1 - dy; side = 'bottom'; }
+            // Only allow if close enough to an edge
+            if (side != null && minDist < 0.2) {
+              final maxRow = widget.grid.lengthInches.floor();
+              final maxCol = widget.grid.widthInches.floor();
+              final type = widget.boundaryMode == 'door' ? 'door' : 'window';
+              
+              final result = BoundaryPlacerService.handleGridBoundaryClick(
+                type, col, row, maxRow, maxCol, widget.grid.boundaries, Icons.door_front_door
+              );
+              
+              if (result != null) {
+                if (result.shouldRemove) {
+                  if (widget.onRemoveBoundary != null || true) {
+                    for (final b in result.segment) {
+                      widget.onRemoveBoundary!(b);
                     }
-                  } else {
-                    if (widget.onAddBoundary != null || true) {
-                      for (final b in result.segment) {
-                        if (!widget.grid.boundaries.contains(b)) {
-                          widget.onAddBoundary!(b);
-                        }
+                  }
+                } else {
+                  if (widget.onAddBoundary != null || true) {
+                    for (final b in result.segment) {
+                      if (!widget.grid.boundaries.contains(b)) {
+                        widget.onAddBoundary!(b);
                       }
                     }
                   }
                 }
               }
-            },
-            child: gridContent,
-          );
-        }
+            }
+          },
+          child: gridContent,
+        );
 
         // Simple 2D grid - no transformations needed
         final gridWidget = Center(
+          key: const ValueKey('grid-widget'),
           child: SizedBox(
             width: gridWidth,
             height: gridHeightPx,

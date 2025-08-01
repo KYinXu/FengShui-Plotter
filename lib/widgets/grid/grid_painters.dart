@@ -194,33 +194,71 @@ class BoundaryPreviewPainter extends CustomPainter {
     if (type == 'door') {
       paint = Paint()
         ..color = Colors.orange // fully opaque
-        ..strokeWidth = 10
+        ..strokeWidth = 6
         ..style = PaintingStyle.stroke;
-      // Show a smaller preview segment that follows the cursor
-      final previewLength = 60.0; // Show 60 pixels of preview
-      final totalLength = (Offset(x2, y2) - Offset(x, y)).distance;
-      final direction = (Offset(x2, y2) - Offset(x, y)) / totalLength;
-      final previewEnd = Offset(x, y) + direction * previewLength;
-      canvas.drawLine(Offset(x, y), previewEnd, paint);
+      // Draw a larger preview line centered in the preview area
+      final centerX = size.width / 2;
+      final centerY = size.height / 2;
+      final previewLength = 80.0; // Larger preview length
+      
+      switch (side) {
+        case 'top':
+        case 'bottom':
+          canvas.drawLine(
+            Offset(centerX - previewLength / 2, centerY),
+            Offset(centerX + previewLength / 2, centerY),
+            paint
+          );
+          break;
+        case 'left':
+        case 'right':
+          canvas.drawLine(
+            Offset(centerX, centerY - previewLength / 2),
+            Offset(centerX, centerY + previewLength / 2),
+            paint
+          );
+          break;
+      }
     } else {
       paint = Paint()
         ..color = Colors.blue // fully opaque
-        ..strokeWidth = 8
+        ..strokeWidth = 5
         ..style = PaintingStyle.stroke;
+      
       const dashWidth = 8.0;
       const dashSpace = 6.0;
-      // Show a smaller preview segment for windows too
-      final previewLength = 60.0;
-      final totalLength = (Offset(x2, y2) - Offset(x, y)).distance;
-      final direction = (Offset(x2, y2) - Offset(x, y)) / totalLength;
-      final previewEnd = Offset(x, y) + direction * previewLength;
-      double drawn = 0;
-      while (drawn < previewLength) {
-        final currentDash = drawn + dashWidth < previewLength ? dashWidth : previewLength - drawn;
-        final p1 = Offset(x, y) + direction * drawn;
-        final p2 = Offset(x, y) + direction * (drawn + currentDash);
-        canvas.drawLine(p1, p2, paint);
-        drawn += dashWidth + dashSpace;
+      final centerX = size.width / 2;
+      final centerY = size.height / 2;
+      final previewLength = 80.0; // Larger preview length
+      
+      void drawDashedLine(Offset start, Offset end) {
+        final totalLength = (end - start).distance;
+        final direction = (end - start) / totalLength;
+        double drawn = 0;
+        while (drawn < totalLength) {
+          final currentDash = drawn + dashWidth < totalLength ? dashWidth : totalLength - drawn;
+          final p1 = start + direction * drawn;
+          final p2 = start + direction * (drawn + currentDash);
+          canvas.drawLine(p1, p2, paint);
+          drawn += dashWidth + dashSpace;
+        }
+      }
+      
+      switch (side) {
+        case 'top':
+        case 'bottom':
+          drawDashedLine(
+            Offset(centerX - previewLength / 2, centerY),
+            Offset(centerX + previewLength / 2, centerY)
+          );
+          break;
+        case 'left':
+        case 'right':
+          drawDashedLine(
+            Offset(centerX, centerY - previewLength / 2),
+            Offset(centerX, centerY + previewLength / 2)
+          );
+          break;
       }
     }
   }

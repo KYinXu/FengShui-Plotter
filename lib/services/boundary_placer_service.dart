@@ -3,8 +3,8 @@ import '../models/grid_model.dart';
 
 class BoundaryPlacerService {
   static const int _span = 12; // 12 grid spaces (1 foot)
-  static const double _snapRadius = 1.0; // Within 1 grid cell
-  static const double _edgeThreshold = 0.2; // For click placement
+  static const double _snapRadius = 2.5; // More generous snap radius (2.5 grid cells)
+  static const double _edgeThreshold = 0.3; // More generous edge threshold for click placement
 
   /// Checks if a type is a boundary type
   static bool isBoundaryType(String type) {
@@ -53,24 +53,24 @@ class BoundaryPlacerService {
     int maxCol
   ) {
     final borderChecks = [
-      {'side': 'top', 'row': 0, 'col': col.floor(), 'dist': (row - 0).abs()},
-      {'side': 'bottom', 'row': maxRow - 1, 'col': col.floor(), 'dist': (row - (maxRow - 1)).abs()},
-      {'side': 'left', 'row': row.floor(), 'col': 0, 'dist': (col - 0).abs()},
-      {'side': 'right', 'row': row.floor(), 'col': maxCol - 1, 'dist': (col - (maxCol - 1)).abs()},
+      {'side': 'top', 'row': 0, 'col': col, 'dist': (row - 0).abs()},
+      {'side': 'bottom', 'row': maxRow - 1, 'col': col, 'dist': (row - (maxRow - 1)).abs()},
+      {'side': 'left', 'row': row, 'col': 0, 'dist': (col - 0).abs()},
+      {'side': 'right', 'row': row, 'col': maxCol - 1, 'dist': (col - (maxCol - 1)).abs()},
     ];
 
     double minDist = double.infinity;
     String? nearestSide;
-    int nearestRow = row.floor();
-    int nearestCol = col.floor();
+    double nearestRow = row;
+    double nearestCol = col;
 
     for (final check in borderChecks) {
       final dist = check['dist'] as double;
       if (dist < minDist) {
         minDist = dist;
         nearestSide = check['side'] as String;
-        nearestRow = check['row'] as int;
-        nearestCol = check['col'] as int;
+        nearestRow = check['row'] as double;
+        nearestCol = check['col'] as double;
       }
     }
 
@@ -94,13 +94,13 @@ class BoundaryPlacerService {
   /// Calculates the starting position for a boundary segment
   static Map<String, int> calculateBoundaryStart(
     String side, 
-    int cellRow, 
-    int cellCol, 
+    double cellRow, 
+    double cellCol, 
     int maxRow, 
     int maxCol
   ) {
-    int startRow = cellRow;
-    int startCol = cellCol;
+    int startRow = cellRow.round();
+    int startCol = cellCol.round();
 
     switch (side) {
       case 'top':
@@ -121,16 +121,16 @@ class BoundaryPlacerService {
   }
 
   /// Checks if a position is on the outer edge of the grid
-  static bool isOuterEdge(String side, int cellRow, int cellCol, int maxRow, int maxCol) {
+  static bool isOuterEdge(String side, double cellRow, double cellCol, int maxRow, int maxCol) {
     switch (side) {
       case 'top':
-        return cellRow == 0;
+        return cellRow <= 0.5;
       case 'bottom':
-        return cellRow == maxRow - 1;
+        return cellRow >= maxRow - 0.5;
       case 'left':
-        return cellCol == 0;
+        return cellCol <= 0.5;
       case 'right':
-        return cellCol == maxCol - 1;
+        return cellCol >= maxCol - 0.5;
       default:
         return false;
     }
@@ -227,7 +227,7 @@ class BoundaryPlacerService {
 
     if (!canPlaceBoundary(side, maxRow, maxCol)) return null;
 
-    final startPos = calculateBoundaryStart(side, nearestRow, nearestCol, maxRow, maxCol);
+    final startPos = calculateBoundaryStart(side, nearestRow.toDouble(), nearestCol.toDouble(), maxRow, maxCol);
     final segment = createBoundarySegment(type, side, startPos['row']!, startPos['col']!);
 
     final allExist = segment.every((b) => existingBoundaries.contains(b));
@@ -257,7 +257,7 @@ class BoundaryPlacerService {
 
     if (!canPlaceBoundary(side, maxRow, maxCol)) return null;
 
-    final startPos = calculateBoundaryStart(side, nearestRow, nearestCol, maxRow, maxCol);
+    final startPos = calculateBoundaryStart(side, nearestRow.toDouble(), nearestCol.toDouble(), maxRow, maxCol);
     final segment = createGridBoundarySegment(type, side, startPos['row']!, startPos['col']!, icon);
 
     final allExist = segment.every((b) => existingBoundaries.contains(b));
@@ -294,9 +294,9 @@ class BoundaryPlacerService {
 
     if (!canPlaceBoundary(side, maxRow, maxCol)) return null;
 
-    if (!isOuterEdge(side, cellRow, cellCol, maxRow, maxCol)) return null;
+    if (!isOuterEdge(side, cellRow.toDouble(), cellCol.toDouble(), maxRow, maxCol)) return null;
 
-    final startPos = calculateBoundaryStart(side, cellRow, cellCol, maxRow, maxCol);
+    final startPos = calculateBoundaryStart(side, cellRow.toDouble(), cellCol.toDouble(), maxRow, maxCol);
     final segment = createBoundarySegment(type, side, startPos['row']!, startPos['col']!);
 
     final allExist = segment.every((b) => existingBoundaries.contains(b));
@@ -334,9 +334,9 @@ class BoundaryPlacerService {
 
     if (!canPlaceBoundary(side, maxRow, maxCol)) return null;
 
-    if (!isOuterEdge(side, cellRow, cellCol, maxRow, maxCol)) return null;
+    if (!isOuterEdge(side, cellRow.toDouble(), cellCol.toDouble(), maxRow, maxCol)) return null;
 
-    final startPos = calculateBoundaryStart(side, cellRow, cellCol, maxRow, maxCol);
+    final startPos = calculateBoundaryStart(side, cellRow.toDouble(), cellCol.toDouble(), maxRow, maxCol);
     final segment = createGridBoundarySegment(type, side, startPos['row']!, startPos['col']!, icon);
 
     final allExist = segment.every((b) => existingBoundaries.contains(b));
@@ -364,9 +364,7 @@ class BoundaryPlacerService {
 
     if (!canPlaceBoundary(side, maxRow, maxCol)) return null;
 
-    final startPos = calculateBoundaryStart(side, nearestRow, nearestCol, maxRow, maxCol);
-    
-    // Use the cursor position for the start of the preview
+    // Use the cursor position directly for preview
     final cursorX = col * cellInchSize;
     final cursorY = row * cellInchSize;
     
@@ -398,10 +396,10 @@ class BoundaryPlacerService {
         y2 = cursorY + cellInchSize;
         break;
       default:
-        x = startPos['col']! * cellInchSize;
-        y = startPos['row']! * cellInchSize;
-        x2 = (side == 'top' || side == 'bottom') ? (startPos['col']! + _span) * cellInchSize : x;
-        y2 = (side == 'left' || side == 'right') ? (startPos['row']! + _span) * cellInchSize : y;
+        x = nearestCol * cellInchSize;
+        y = nearestRow * cellInchSize;
+        x2 = (side == 'top' || side == 'bottom') ? (nearestCol + 1) * cellInchSize : x;
+        y2 = (side == 'left' || side == 'right') ? (nearestRow + 1) * cellInchSize : y;
     }
 
     return BoundaryPreviewInfo(
