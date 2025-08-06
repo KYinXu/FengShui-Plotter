@@ -172,15 +172,14 @@ class GridWidgetState extends State<GridWidget> {
           final gridW = widget.grid.widthInches.floor();
           final gridH = widget.grid.lengthInches.floor();
           
+          // Use raw coordinates for edge detection, but snapped coordinates for preview positioning
           final previewInfo = BoundaryPlacerService.calculateBoundaryPreview(
             col, row, gridH, gridW, cellInchSize, type
           );
           
           if (previewInfo != null) {
-            // For boundaries, use the snapped grid position for preview
-            final int snappedCol = col.round();
-            final int snappedRow = row.round();
-            _updatePreview(Offset(snappedCol.toDouble(), snappedRow.toDouble()), type, data['icon']);
+            // For boundaries, use raw coordinates for edge detection but snapped for display
+            _updatePreview(Offset(col, row), type, data['icon']);
           } else {
             _updatePreview(null, null, null);
           }
@@ -395,6 +394,7 @@ class GridWidgetState extends State<GridWidget> {
                       if (_previewType == 'door' || _previewType == 'window') {
                         final gridW = widget.grid.widthInches.floor();
                         final gridH = widget.grid.lengthInches.floor();
+                        // Use the coordinates that were passed to _updatePreview
                         final double col = _previewCell!.dx;
                         final double row = _previewCell!.dy;
                         

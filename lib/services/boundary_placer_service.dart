@@ -3,7 +3,7 @@ import '../models/grid_model.dart';
 
 class BoundaryPlacerService {
   static const int _span = 12; // 12 grid spaces (1 foot)
-  static const double _snapRadius = 2.5; // More generous snap radius (2.5 grid cells)
+  static const double _snapRadius = 5.0; // More generous snap radius (5 grid cells)
   static const double _edgeThreshold = 0.3; // More generous edge threshold for click placement
 
   /// Checks if a type is a boundary type
@@ -147,13 +147,13 @@ class BoundaryPlacerService {
   static bool isOuterEdge(String side, double cellRow, double cellCol, int maxRow, int maxCol) {
     switch (side) {
       case 'top':
-        return cellRow <= 0.5;
+        return cellRow <= 1.0; // More permissive - within 1 cell of top
       case 'bottom':
-        return cellRow >= maxRow - 0.5;
+        return cellRow >= maxRow - 1.0; // More permissive - within 1 cell of bottom
       case 'left':
-        return cellCol <= 0.5;
+        return cellCol <= 1.0; // More permissive - within 1 cell of left
       case 'right':
-        return cellCol >= maxCol - 0.5;
+        return cellCol >= maxCol - 1.0; // More permissive - within 1 cell of right
       default:
         return false;
     }
@@ -288,16 +288,46 @@ class BoundaryPlacerService {
     final int snappedRow = row.round();
     print('Snapped to col=$snappedCol, row=$snappedRow');
     
-    final borderInfo = findNearestBorderSide(snappedCol.toDouble(), snappedRow.toDouble(), maxRow, maxCol);
-    if (borderInfo == null) {
-      print('FAILED: No border side found for position ($snappedCol, $snappedRow)');
-      return null;
+    // Use the same edge detection logic as preview
+    final gridCol = snappedCol;
+    final gridRow = snappedRow;
+    
+    // Calculate distances to each edge (same logic as preview)
+    final leftDist = gridCol;
+    final rightDist = maxCol - 1 - gridCol;
+    final topDist = gridRow;
+    final bottomDist = maxRow - 1 - gridRow;
+    
+    print('PLACEMENT EDGE DEBUG: Distances - left: $leftDist, right: $rightDist, top: $topDist, bottom: $bottomDist');
+    
+    // Find the minimum distance
+    final minDist = [leftDist, rightDist, topDist, bottomDist].reduce((a, b) => a < b ? a : b);
+    
+    String side;
+    int nearestRow;
+    int nearestCol;
+    
+    if (minDist == leftDist) {
+      side = 'left';
+      nearestRow = gridRow;
+      nearestCol = 0;
+      print('PLACEMENT EDGE DEBUG: Detected LEFT side (distance: $leftDist)');
+    } else if (minDist == rightDist) {
+      side = 'right';
+      nearestRow = gridRow;
+      nearestCol = maxCol - 1;
+      print('PLACEMENT EDGE DEBUG: Detected RIGHT side (distance: $rightDist)');
+    } else if (minDist == topDist) {
+      side = 'top';
+      nearestRow = 0;
+      nearestCol = gridCol;
+      print('PLACEMENT EDGE DEBUG: Detected TOP side (distance: $topDist)');
+    } else {
+      side = 'bottom';
+      nearestRow = maxRow - 1;
+      nearestCol = gridCol;
+      print('PLACEMENT EDGE DEBUG: Detected BOTTOM side (distance: $bottomDist)');
     }
-
-    final side = borderInfo['side'] as String;
-    final nearestRow = borderInfo['row'] as int;
-    final nearestCol = borderInfo['col'] as int;
-    print('Found border side: $side at position ($nearestCol, $nearestRow)');
 
     if (!canPlaceBoundary(side, maxRow, maxCol, type)) {
       print('FAILED: Cannot place boundary on side $side');
@@ -339,23 +369,35 @@ class BoundaryPlacerService {
     final dx = col - cellCol;
     final dy = row - cellRow;
 
-    // Find nearest edge - use same logic as preview
-    String? side;
-    if (dx < dy && dx < (1 - dx) && dx < (1 - dy)) {
+    // Use the same edge detection logic as preview
+    final gridCol = cellCol;
+    final gridRow = cellRow;
+    
+    // Calculate distances to each edge (same logic as preview)
+    final leftDist = gridCol;
+    final rightDist = maxCol - 1 - gridCol;
+    final topDist = gridRow;
+    final bottomDist = maxRow - 1 - gridRow;
+    
+    print('CLICK EDGE DEBUG: Distances - left: $leftDist, right: $rightDist, top: $topDist, bottom: $bottomDist');
+    
+    // Find the minimum distance
+    final minDist = [leftDist, rightDist, topDist, bottomDist].reduce((a, b) => a < b ? a : b);
+    
+    String side;
+    if (minDist == leftDist) {
       side = 'left';
-    } else if ((1 - dx) < dy && (1 - dx) < dx && (1 - dx) < (1 - dy)) {
+      print('CLICK EDGE DEBUG: Detected LEFT side (distance: $leftDist)');
+    } else if (minDist == rightDist) {
       side = 'right';
-    } else if (dy < (1 - dy)) {
+      print('CLICK EDGE DEBUG: Detected RIGHT side (distance: $rightDist)');
+    } else if (minDist == topDist) {
       side = 'top';
+      print('CLICK EDGE DEBUG: Detected TOP side (distance: $topDist)');
     } else {
       side = 'bottom';
+      print('CLICK EDGE DEBUG: Detected BOTTOM side (distance: $bottomDist)');
     }
-
-    if (side == null) {
-      print('FAILED: No side detected');
-      return null;
-    }
-    print('Side detected: $side');
 
     if (!canPlaceBoundary(side, maxRow, maxCol, type)) {
       print('FAILED: Cannot place boundary');
@@ -400,23 +442,35 @@ class BoundaryPlacerService {
     final dx = col - cellCol;
     final dy = row - cellRow;
 
-    // Find nearest edge - use same logic as preview
-    String? side;
-    if (dx < dy && dx < (1 - dx) && dx < (1 - dy)) {
+    // Use the same edge detection logic as preview
+    final gridCol = cellCol;
+    final gridRow = cellRow;
+    
+    // Calculate distances to each edge (same logic as preview)
+    final leftDist = gridCol;
+    final rightDist = maxCol - 1 - gridCol;
+    final topDist = gridRow;
+    final bottomDist = maxRow - 1 - gridRow;
+    
+    print('GRID CLICK EDGE DEBUG: Distances - left: $leftDist, right: $rightDist, top: $topDist, bottom: $bottomDist');
+    
+    // Find the minimum distance
+    final minDist = [leftDist, rightDist, topDist, bottomDist].reduce((a, b) => a < b ? a : b);
+    
+    String side;
+    if (minDist == leftDist) {
       side = 'left';
-    } else if ((1 - dx) < dy && (1 - dx) < dx && (1 - dx) < (1 - dy)) {
+      print('GRID CLICK EDGE DEBUG: Detected LEFT side (distance: $leftDist)');
+    } else if (minDist == rightDist) {
       side = 'right';
-    } else if (dy < (1 - dy)) {
+      print('GRID CLICK EDGE DEBUG: Detected RIGHT side (distance: $rightDist)');
+    } else if (minDist == topDist) {
       side = 'top';
+      print('GRID CLICK EDGE DEBUG: Detected TOP side (distance: $topDist)');
     } else {
       side = 'bottom';
+      print('GRID CLICK EDGE DEBUG: Detected BOTTOM side (distance: $bottomDist)');
     }
-
-    if (side == null) {
-      print('FAILED: No side detected');
-      return null;
-    }
-    print('Side detected: $side');
 
     if (!canPlaceBoundary(side, maxRow, maxCol, type)) {
       print('FAILED: Cannot place boundary');
@@ -468,16 +522,39 @@ class BoundaryPlacerService {
     final dx = col - cellCol;
     final dy = row - cellRow;
 
-    // Find nearest edge - be more permissive for preview
+    // Find nearest edge - simplified for snapped coordinates
     String? side;
-    if (dx < dy && dx < (1 - dx) && dx < (1 - dy)) {
+    
+    // Since we're using snapped coordinates, determine side based on grid position
+    final gridCol = col.round();
+    final gridRow = row.round();
+    
+    print('PREVIEW EDGE DEBUG: gridCol=$gridCol, gridRow=$gridRow, maxCol=$maxCol, maxRow=$maxRow');
+    
+    // Determine which edge is closest based on grid position
+    // Check all edges and pick the closest one
+    final leftDist = gridCol;
+    final rightDist = maxCol - 1 - gridCol;
+    final topDist = gridRow;
+    final bottomDist = maxRow - 1 - gridRow;
+    
+    print('PREVIEW EDGE DEBUG: Distances - left: $leftDist, right: $rightDist, top: $topDist, bottom: $bottomDist');
+    
+    // Find the minimum distance
+    final minDist = [leftDist, rightDist, topDist, bottomDist].reduce((a, b) => a < b ? a : b);
+    
+    if (minDist == leftDist) {
       side = 'left';
-    } else if ((1 - dx) < dy && (1 - dx) < dx && (1 - dx) < (1 - dy)) {
+      print('PREVIEW EDGE DEBUG: Detected LEFT side (distance: $leftDist)');
+    } else if (minDist == rightDist) {
       side = 'right';
-    } else if (dy < (1 - dy)) {
+      print('PREVIEW EDGE DEBUG: Detected RIGHT side (distance: $rightDist)');
+    } else if (minDist == topDist) {
       side = 'top';
+      print('PREVIEW EDGE DEBUG: Detected TOP side (distance: $topDist)');
     } else {
       side = 'bottom';
+      print('PREVIEW EDGE DEBUG: Detected BOTTOM side (distance: $bottomDist)');
     }
 
     // Calculate start position (simplified)
