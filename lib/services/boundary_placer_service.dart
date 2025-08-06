@@ -571,6 +571,9 @@ class BoundaryPlacerService {
       if (startRow < 0) startRow = 0;
     }
     
+    // Use fixed pixel thickness to match placement
+    final fixedThickness = 8.0;
+    
     // Calculate pixel coordinates directly
     double x, y, x2, y2;
     switch (side) {
@@ -578,24 +581,24 @@ class BoundaryPlacerService {
         x = startCol * cellInchSize;
         y = 0;
         x2 = (startCol + span) * cellInchSize;
-        y2 = config.thickness * cellInchSize;
+        y2 = fixedThickness;
         break;
       case 'bottom':
         x = startCol * cellInchSize;
-        y = (maxRow - 1) * cellInchSize;
+        y = (maxRow - 1) * cellInchSize - (fixedThickness / 2); // Center on the edge
         x2 = (startCol + span) * cellInchSize;
-        y2 = y + (config.thickness * cellInchSize);
+        y2 = y + fixedThickness;
         break;
       case 'left':
         x = 0;
         y = startRow * cellInchSize;
-        x2 = config.thickness * cellInchSize;
+        x2 = fixedThickness;
         y2 = (startRow + span) * cellInchSize;
         break;
       case 'right':
-        x = (maxCol - 1) * cellInchSize;
+        x = (maxCol - 1) * cellInchSize - (fixedThickness / 2); // Center on the edge
         y = startRow * cellInchSize;
-        x2 = x + (config.thickness * cellInchSize);
+        x2 = x + fixedThickness;
         y2 = (startRow + span) * cellInchSize;
         break;
       default:

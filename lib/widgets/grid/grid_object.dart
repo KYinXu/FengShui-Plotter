@@ -60,6 +60,9 @@ class GridBoundaryWidget extends StatelessWidget {
     final color = config?.color ?? (boundary.type == 'door' ? Colors.orange : Colors.blue);
     final thickness = config?.thickness ?? 3.0;
     
+    // Use fixed pixel thickness instead of scaling with cellInchSize
+    final fixedThickness = 8.0; // Fixed pixel thickness for consistent appearance
+    
     // Calculate position and size like the old system
     double left, top, width, height;
     
@@ -68,24 +71,24 @@ class GridBoundaryWidget extends StatelessWidget {
         left = boundary.col * cellInchSize;
         top = 0;
         width = cellInchSize; // Full cell width
-        height = thickness * cellInchSize;
+        height = fixedThickness; // Fixed pixel thickness
         break;
       case 'bottom':
         left = boundary.col * cellInchSize;
-        top = (boundary.row - thickness + 1) * cellInchSize;
+        top = (boundary.row * cellInchSize) - (fixedThickness / 2); // Center on the edge
         width = cellInchSize; // Full cell width
-        height = thickness * cellInchSize;
+        height = fixedThickness; // Fixed pixel thickness
         break;
       case 'left':
         left = 0;
         top = boundary.row * cellInchSize;
-        width = thickness * cellInchSize;
+        width = fixedThickness; // Fixed pixel thickness
         height = cellInchSize; // Full cell height
         break;
       case 'right':
-        left = (boundary.col - thickness + 1) * cellInchSize;
+        left = (boundary.col * cellInchSize) - (fixedThickness / 2); // Center on the edge
         top = boundary.row * cellInchSize;
-        width = thickness * cellInchSize;
+        width = fixedThickness; // Fixed pixel thickness
         height = cellInchSize; // Full cell height
         break;
       default:

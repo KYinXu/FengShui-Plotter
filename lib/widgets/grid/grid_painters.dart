@@ -128,16 +128,16 @@ class BoundaryPreviewPainter extends CustomPainter {
     if (type == 'door') {
       paint = Paint()
         ..color = Colors.orange // fully opaque
-        ..strokeWidth = 6
+        ..strokeWidth = 8 // Fixed pixel thickness to match placement
         ..style = PaintingStyle.stroke;
     } else {
       paint = Paint()
         ..color = Colors.blue // fully opaque
-        ..strokeWidth = 5
+        ..strokeWidth = 8 // Fixed pixel thickness to match placement
         ..style = PaintingStyle.stroke;
     }
     
-    // Use the actual calculated coordinates instead of fixed preview length
+    // Use the actual calculated coordinates but ensure perfect alignment
     final startX = x;
     final startY = y;
     final endX = x2;
@@ -147,14 +147,31 @@ class BoundaryPreviewPainter extends CustomPainter {
     final previewWidth = endX - startX;
     final previewHeight = endY - startY;
     
-    // Draw the preview using the actual calculated size
+    // Draw the preview using perfectly aligned coordinates based on side
     if (type == 'door') {
       // Solid line for doors
-      canvas.drawLine(
-        Offset(startX, startY),
-        Offset(endX, endY),
-        paint
-      );
+      switch (side) {
+        case 'top':
+        case 'bottom':
+          // Horizontal line - use same Y coordinate for both points
+          final centerY = side == 'top' ? startY : endY;
+          canvas.drawLine(
+            Offset(startX, centerY),
+            Offset(endX, centerY),
+            paint
+          );
+          break;
+        case 'left':
+        case 'right':
+          // Vertical line - use same X coordinate for both points
+          final centerX = side == 'left' ? startX : endX;
+          canvas.drawLine(
+            Offset(centerX, startY),
+            Offset(centerX, endY),
+            paint
+          );
+          break;
+      }
     } else {
       // Dashed line for windows
       const dashWidth = 8.0;
@@ -173,7 +190,26 @@ class BoundaryPreviewPainter extends CustomPainter {
         }
       }
       
-      drawDashedLine(Offset(startX, startY), Offset(endX, endY));
+      switch (side) {
+        case 'top':
+        case 'bottom':
+          // Horizontal line - use same Y coordinate for both points
+          final centerY = side == 'top' ? startY : endY;
+          drawDashedLine(
+            Offset(startX, centerY),
+            Offset(endX, centerY)
+          );
+          break;
+        case 'left':
+        case 'right':
+          // Vertical line - use same X coordinate for both points
+          final centerX = side == 'left' ? startX : endX;
+          drawDashedLine(
+            Offset(centerX, startY),
+            Offset(centerX, endY)
+          );
+          break;
+      }
     }
   }
 
