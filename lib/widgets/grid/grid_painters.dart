@@ -130,40 +130,35 @@ class BoundaryPreviewPainter extends CustomPainter {
         ..color = Colors.orange // fully opaque
         ..strokeWidth = 6
         ..style = PaintingStyle.stroke;
-      // Draw a larger preview line centered in the preview area
-      final centerX = size.width / 2;
-      final centerY = size.height / 2;
-      final previewLength = 80.0; // Larger preview length
-      
-      switch (side) {
-        case 'top':
-        case 'bottom':
-          canvas.drawLine(
-            Offset(centerX - previewLength / 2, centerY),
-            Offset(centerX + previewLength / 2, centerY),
-            paint
-          );
-          break;
-        case 'left':
-        case 'right':
-          canvas.drawLine(
-            Offset(centerX, centerY - previewLength / 2),
-            Offset(centerX, centerY + previewLength / 2),
-            paint
-          );
-          break;
-      }
     } else {
       paint = Paint()
         ..color = Colors.blue // fully opaque
         ..strokeWidth = 5
         ..style = PaintingStyle.stroke;
-      
+    }
+    
+    // Use the actual calculated coordinates instead of fixed preview length
+    final startX = x;
+    final startY = y;
+    final endX = x2;
+    final endY = y2;
+    
+    // Calculate the actual size of the preview area
+    final previewWidth = endX - startX;
+    final previewHeight = endY - startY;
+    
+    // Draw the preview using the actual calculated size
+    if (type == 'door') {
+      // Solid line for doors
+      canvas.drawLine(
+        Offset(startX, startY),
+        Offset(endX, endY),
+        paint
+      );
+    } else {
+      // Dashed line for windows
       const dashWidth = 8.0;
       const dashSpace = 6.0;
-      final centerX = size.width / 2;
-      final centerY = size.height / 2;
-      final previewLength = 80.0; // Larger preview length
       
       void drawDashedLine(Offset start, Offset end) {
         final totalLength = (end - start).distance;
@@ -178,22 +173,7 @@ class BoundaryPreviewPainter extends CustomPainter {
         }
       }
       
-      switch (side) {
-        case 'top':
-        case 'bottom':
-          drawDashedLine(
-            Offset(centerX - previewLength / 2, centerY),
-            Offset(centerX + previewLength / 2, centerY)
-          );
-          break;
-        case 'left':
-        case 'right':
-          drawDashedLine(
-            Offset(centerX, centerY - previewLength / 2),
-            Offset(centerX, centerY + previewLength / 2)
-          );
-          break;
-      }
+      drawDashedLine(Offset(startX, startY), Offset(endX, endY));
     }
   }
 

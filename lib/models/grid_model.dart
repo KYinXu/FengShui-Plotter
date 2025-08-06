@@ -231,7 +231,7 @@ class Grid extends Equatable {
     required this.lengthInches,
     required this.widthInches,
     this.objects = const [],
-    this.boundaries = const [],
+    this.boundaries = const [],g
   });
 
   Grid addObject(GridObject object) {
