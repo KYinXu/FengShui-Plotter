@@ -55,35 +55,65 @@ class GridBoundaryWidget extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // Use polygon geometry for rendering boundaries
-    final poly = boundary.getTransformedPolygon();
-    final bounds = getPolygonBounds(poly);
-    final double left = bounds['minX']! * cellInchSize;
-    final double top = bounds['minY']! * cellInchSize;
-    final double boundaryWidth = (bounds['maxX']! - bounds['minX']!) * cellInchSize;
-    final double boundaryHeight = (bounds['maxY']! - bounds['minY']!) * cellInchSize;
+    // Get boundary configuration for proper styling
+    final config = BoundaryRegistry.getConfig(boundary.type);
+    final color = config?.color ?? (boundary.type == 'door' ? Colors.orange : Colors.blue);
+    final thickness = config?.thickness ?? 3.0;
+    
+    // Calculate position and size like the old system
+    double left, top, width, height;
+    
+    switch (boundary.side) {
+      case 'top':
+        left = boundary.col * cellInchSize;
+        top = 0;
+        width = cellInchSize; // Full cell width
+        height = thickness * cellInchSize;
+        break;
+      case 'bottom':
+        left = boundary.col * cellInchSize;
+        top = (boundary.row - thickness + 1) * cellInchSize;
+        width = cellInchSize; // Full cell width
+        height = thickness * cellInchSize;
+        break;
+      case 'left':
+        left = 0;
+        top = boundary.row * cellInchSize;
+        width = thickness * cellInchSize;
+        height = cellInchSize; // Full cell height
+        break;
+      case 'right':
+        left = (boundary.col - thickness + 1) * cellInchSize;
+        top = boundary.row * cellInchSize;
+        width = thickness * cellInchSize;
+        height = cellInchSize; // Full cell height
+        break;
+      default:
+        left = boundary.col * cellInchSize;
+        top = boundary.row * cellInchSize;
+        width = cellInchSize;
+        height = cellInchSize;
+    }
     
     return Positioned(
       left: left,
       top: top,
       child: Container(
-        width: boundaryWidth,
-        height: boundaryHeight,
+        width: width,
+        height: height,
         decoration: BoxDecoration(
           border: Border.all(
-            color: boundary.type == 'door' ? Colors.orange : Colors.blue,
+            color: color,
             width: 2,
           ),
           shape: BoxShape.rectangle,
-          color: boundary.type == 'door' 
-            ? Colors.orange.withValues(alpha: 0.3)
-            : Colors.blue.withValues(alpha: 0.3),
+          color: color.withValues(alpha: 0.3),
         ),
         child: Center(
           child: Icon(
             boundary.icon,
-            size: min(boundaryWidth, boundaryHeight) * 0.8,
-            color: boundary.type == 'door' ? Colors.orange : Colors.blue,
+            size: min(width, height) * 0.8,
+            color: color,
           ),
         ),
       ),

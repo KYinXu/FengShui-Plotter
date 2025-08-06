@@ -55,7 +55,6 @@ class GridAreaPainter extends CustomPainter {
   final Color majorGridBorderColor;
   final double gridWidth;
   final double gridHeight;
-  final List<GridBoundary> boundaries;
 
   GridAreaPainter({
     required this.grid,
@@ -65,7 +64,6 @@ class GridAreaPainter extends CustomPainter {
     required this.majorGridBorderColor,
     required this.gridWidth,
     required this.gridHeight,
-    required this.boundaries,
   });
 
   @override
@@ -104,69 +102,6 @@ class GridAreaPainter extends CustomPainter {
       Rect.fromLTWH(0, 0, cellInchSize * totalColsInches, cellInchSize * totalRowsInches),
       outlinePaint,
     );
-    for (final boundary in boundaries) {
-      final double x = boundary.col * cellInchSize;
-      final double y = boundary.row * cellInchSize;
-      final double x2 = (boundary.col + 1) * cellInchSize;
-      final double y2 = (boundary.row + 1) * cellInchSize;
-      Paint paint;
-      if (boundary.type == 'door') {
-        paint = Paint()
-          ..color = Colors.orange
-          ..strokeWidth = 7
-          ..style = PaintingStyle.stroke;
-      } else {
-        paint = Paint()
-          ..color = Colors.blue
-          ..strokeWidth = 5
-          ..style = PaintingStyle.stroke;
-      }
-      if (boundary.type == 'door') {
-        switch (boundary.side) {
-          case 'top':
-            canvas.drawLine(Offset(x, y), Offset(x2, y), paint);
-            break;
-          case 'bottom':
-            canvas.drawLine(Offset(x, y2), Offset(x2, y2), paint);
-            break;
-          case 'left':
-            canvas.drawLine(Offset(x, y), Offset(x, y2), paint);
-            break;
-          case 'right':
-            canvas.drawLine(Offset(x2, y), Offset(x2, y2), paint);
-            break;
-        }
-      } else {
-        const dashWidth = 8.0;
-        const dashSpace = 6.0;
-        void drawDashedLine(Offset start, Offset end) {
-          final totalLength = (end - start).distance;
-          final direction = (end - start) / totalLength;
-          double drawn = 0;
-          while (drawn < totalLength) {
-            final currentDash = drawn + dashWidth < totalLength ? dashWidth : totalLength - drawn;
-            final p1 = start + direction * drawn;
-            final p2 = start + direction * (drawn + currentDash);
-            canvas.drawLine(p1, p2, paint);
-            drawn += dashWidth + dashSpace;
-          }
-        }
-        switch (boundary.side) {
-          case 'top':
-            drawDashedLine(Offset(x, y), Offset(x2, y));
-            break;
-          case 'bottom':
-            drawDashedLine(Offset(x, y2), Offset(x2, y2));
-            break;
-          case 'left':
-            drawDashedLine(Offset(x, y), Offset(x, y2));
-            break;
-          case 'right':
-            drawDashedLine(Offset(x2, y), Offset(x2, y2));
-            break;
-        }
-      }
-    }
   }
 
   @override
@@ -177,8 +112,7 @@ class GridAreaPainter extends CustomPainter {
         oldDelegate.gridBorderColor != gridBorderColor ||
         oldDelegate.majorGridBorderColor != majorGridBorderColor ||
         oldDelegate.gridWidth != gridWidth ||
-        oldDelegate.gridHeight != gridHeight ||
-        oldDelegate.boundaries != boundaries;
+        oldDelegate.gridHeight != gridHeight;
   }
 }
 

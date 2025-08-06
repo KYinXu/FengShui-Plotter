@@ -169,14 +169,6 @@ class GridWidgetState extends State<GridWidget> {
           double col = gridLocal.dx / cellInchSize;
           double row = gridLocal.dy / cellInchSize;
           
-          // Debug output to see coordinate conversion
-          print('GridWidget: raw pointer=${pointerOffset}');
-          print('GridWidget: local=${local}');
-          print('GridWidget: gridLocalPointer=${gridLocalPointer}');
-          print('GridWidget: gridLocal=${gridLocal}');
-          print('GridWidget: col=$col, row=$row');
-          print('GridWidget: offsetX=$offsetX, offsetY=$offsetY');
-          
           final gridW = widget.grid.widthInches.floor();
           final gridH = widget.grid.lengthInches.floor();
           
@@ -315,9 +307,11 @@ class GridWidgetState extends State<GridWidget> {
               final double col = gridLocal.dx / cellInchSize;
               final double row = gridLocal.dy / cellInchSize;
               
+              print('GRID WIDGET: Calling boundary drop method for type=$type');
               final result = BoundaryPlacerService.handleGridBoundaryDrop(
                 type, col, row, maxRow, maxCol, widget.grid.boundaries, details.data['icon']
               );
+              print('GRID WIDGET: Boundary drop result = ${result != null ? "SUCCESS" : "FAILED"}');
               
               if (result != null) {
                 if (result.shouldRemove) {
@@ -390,7 +384,6 @@ class GridWidgetState extends State<GridWidget> {
                     majorGridBorderColor: majorGridBorderColor,
                     gridWidth: gridWidth,
                     gridHeight: gridHeightPx,
-                    boundaries: widget.grid.boundaries,
                   ),
                 ),
                 // Preview overlay
@@ -492,22 +485,29 @@ class GridWidgetState extends State<GridWidget> {
             final int cellRow = row.floor();
             final double dx = col - cellCol;
             final double dy = row - cellRow;
-            // Find nearest edge
-            double minDist = 1.0;
+            // Find nearest edge - use same logic as placement methods
             String? side;
-            if (dx < 0.2) { minDist = dx; side = 'left'; }
-            if (1 - dx < minDist) { minDist = 1 - dx; side = 'right'; }
-            if (dy < minDist) { minDist = dy; side = 'top'; }
-            if (1 - dy < minDist) { minDist = 1 - dy; side = 'bottom'; }
-            // Only allow if close enough to an edge
-            if (side != null && minDist < 0.2) {
+            if (dx < dy && dx < (1 - dx) && dx < (1 - dy)) {
+              side = 'left';
+            } else if ((1 - dx) < dy && (1 - dx) < dx && (1 - dx) < (1 - dy)) {
+              side = 'right';
+            } else if (dy < (1 - dy)) {
+              side = 'top';
+            } else {
+              side = 'bottom';
+            }
+            
+            // Only allow if side is detected
+            if (side != null) {
               final maxRow = widget.grid.lengthInches.floor();
               final maxCol = widget.grid.widthInches.floor();
               final type = widget.boundaryMode == 'door' ? 'door' : 'window';
               
+              print('GRID WIDGET: Calling placement method for type=$type');
               final result = BoundaryPlacerService.handleGridBoundaryClick(
                 type, col, row, maxRow, maxCol, widget.grid.boundaries, Icons.door_front_door
               );
+              print('GRID WIDGET: Placement result = ${result != null ? "SUCCESS" : "FAILED"}');
               
               if (result != null) {
                 if (result.shouldRemove) {

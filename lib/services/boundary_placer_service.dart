@@ -52,6 +52,8 @@ class BoundaryPlacerService {
     int maxRow, 
     int maxCol
   ) {
+    print('findNearestBorderSide: col=$col, row=$row, maxRow=$maxRow, maxCol=$maxCol');
+    
     final borderChecks = [
       {'side': 'top', 'row': 0, 'col': col.round(), 'dist': (row - 0).abs()},
       {'side': 'bottom', 'row': maxRow - 1, 'col': col.round(), 'dist': (row - (maxRow - 1)).abs()},
@@ -66,6 +68,7 @@ class BoundaryPlacerService {
 
     for (final check in borderChecks) {
       final dist = check['dist'] as double;
+      print('Checking ${check['side']}: distance=${dist.toStringAsFixed(2)}');
       if (dist < minDist) {
         minDist = dist;
         nearestSide = check['side'] as String;
@@ -74,8 +77,13 @@ class BoundaryPlacerService {
       }
     }
 
-    if (minDist > _snapRadius) return null;
+    print('Nearest side: $nearestSide, distance: ${minDist.toStringAsFixed(2)}, snap radius: $_snapRadius');
+    if (minDist > _snapRadius) {
+      print('FAILED: Distance $minDist exceeds snap radius $_snapRadius');
+      return null;
+    }
 
+    print('SUCCESS: Found border side $nearestSide at ($nearestCol, $nearestRow)');
     return {
       'side': nearestSide,
       'row': nearestRow,
@@ -85,9 +93,16 @@ class BoundaryPlacerService {
   }
 
   /// Validates if boundary placement is possible for the given side and grid dimensions
-  static bool canPlaceBoundary(String side, int maxRow, int maxCol) {
-    if ((side == 'top' || side == 'bottom') && maxCol < _span) return false;
-    if ((side == 'left' || side == 'right') && maxRow < _span) return false;
+  static bool canPlaceBoundary(String side, int maxRow, int maxCol, [String? boundaryType]) {
+    // Use the actual boundary size from config, or fallback to _span
+    int span = _span;
+    if (boundaryType != null) {
+      final config = BoundaryRegistry.getConfig(boundaryType);
+      span = config?.length.round() ?? _span;
+    }
+    
+    if ((side == 'top' || side == 'bottom') && maxCol < span) return false;
+    if ((side == 'left' || side == 'right') && maxRow < span) return false;
     return true;
   }
 
@@ -97,23 +112,31 @@ class BoundaryPlacerService {
     double cellRow, 
     double cellCol, 
     int maxRow, 
-    int maxCol
+    int maxCol,
+    [String? boundaryType]
   ) {
     int startRow = cellRow.round();
     int startCol = cellCol.round();
+    
+    // Use the actual boundary size from config, or fallback to _span
+    int span = _span;
+    if (boundaryType != null) {
+      final config = BoundaryRegistry.getConfig(boundaryType);
+      span = config?.length.round() ?? _span;
+    }
 
     switch (side) {
       case 'top':
-        if (startCol + _span > maxCol) startCol = maxCol - _span;
+        if (startCol + span > maxCol) startCol = maxCol - span;
         break;
       case 'bottom':
-        if (startCol + _span > maxCol) startCol = maxCol - _span;
+        if (startCol + span > maxCol) startCol = maxCol - span;
         break;
       case 'left':
-        if (startRow + _span > maxRow) startRow = maxRow - _span;
+        if (startRow + span > maxRow) startRow = maxRow - span;
         break;
       case 'right':
-        if (startRow + _span > maxRow) startRow = maxRow - _span;
+        if (startRow + span > maxRow) startRow = maxRow - span;
         break;
     }
 
@@ -145,7 +168,11 @@ class BoundaryPlacerService {
   ) {
     List<BoundaryElement> segment = [];
     
-    for (int i = 0; i < _span; i++) {
+    // Use the actual boundary size from config, or fallback to _span
+    final config = BoundaryRegistry.getConfig(type);
+    final int span = config?.length.round() ?? _span;
+    
+    for (int i = 0; i < span; i++) {
       switch (side) {
         case 'top':
         case 'bottom':
@@ -181,7 +208,11 @@ class BoundaryPlacerService {
   ) {
     List<GridBoundary> segment = [];
     
-    for (int i = 0; i < _span; i++) {
+    // Use the actual boundary size from config, or fallback to _span
+    final config = BoundaryRegistry.getConfig(type);
+    final int span = config?.length.round() ?? _span;
+    
+    for (int i = 0; i < span; i++) {
       switch (side) {
         case 'top':
         case 'bottom':
@@ -225,9 +256,9 @@ class BoundaryPlacerService {
     final nearestRow = borderInfo['row'] as int;
     final nearestCol = borderInfo['col'] as int;
 
-    if (!canPlaceBoundary(side, maxRow, maxCol)) return null;
+    if (!canPlaceBoundary(side, maxRow, maxCol, type)) return null;
 
-    final startPos = calculateBoundaryStart(side, nearestRow.toDouble(), nearestCol.toDouble(), maxRow, maxCol);
+    final startPos = calculateBoundaryStart(side, nearestRow.toDouble(), nearestCol.toDouble(), maxRow, maxCol, type);
     final segment = createBoundarySegment(type, side, startPos['row']!, startPos['col']!);
 
     final allExist = segment.every((b) => existingBoundaries.contains(b));
@@ -248,24 +279,42 @@ class BoundaryPlacerService {
     List<GridBoundary> existingBoundaries,
     IconData icon
   ) {
+    print('=== ATTEMPTING BOUNDARY DROP PLACEMENT ===');
+    print('Drop at col=$col, row=$row, type=$type');
+    print('TEST PRINT - DROP METHOD CALLED');
+    
     // Snap to nearest grid cell for placement
     final int snappedCol = col.round();
     final int snappedRow = row.round();
+    print('Snapped to col=$snappedCol, row=$snappedRow');
     
     final borderInfo = findNearestBorderSide(snappedCol.toDouble(), snappedRow.toDouble(), maxRow, maxCol);
-    if (borderInfo == null) return null;
+    if (borderInfo == null) {
+      print('FAILED: No border side found for position ($snappedCol, $snappedRow)');
+      return null;
+    }
 
     final side = borderInfo['side'] as String;
     final nearestRow = borderInfo['row'] as int;
     final nearestCol = borderInfo['col'] as int;
+    print('Found border side: $side at position ($nearestCol, $nearestRow)');
 
-    if (!canPlaceBoundary(side, maxRow, maxCol)) return null;
+    if (!canPlaceBoundary(side, maxRow, maxCol, type)) {
+      print('FAILED: Cannot place boundary on side $side');
+      return null;
+    }
+    print('Can place boundary: true');
 
-    final startPos = calculateBoundaryStart(side, nearestRow.toDouble(), nearestCol.toDouble(), maxRow, maxCol);
+    final startPos = calculateBoundaryStart(side, nearestRow.toDouble(), nearestCol.toDouble(), maxRow, maxCol, type);
+    print('Start position: row=${startPos['row']}, col=${startPos['col']}');
+    
     final segment = createGridBoundarySegment(type, side, startPos['row']!, startPos['col']!, icon);
+    print('Created segment with ${segment.length} boundaries');
 
     final allExist = segment.every((b) => existingBoundaries.contains(b));
+    print('All boundaries exist: $allExist');
     
+    print('SUCCESS: Boundary drop placement completed');
     return GridBoundaryPlacementResult(
       segment: segment,
       shouldRemove: allExist,
@@ -281,30 +330,51 @@ class BoundaryPlacerService {
     int maxCol,
     List<BoundaryElement> existingBoundaries
   ) {
+    print('=== ATTEMPTING BOUNDARY PLACEMENT ===');
+    print('Click at col=$col, row=$row, type=$type');
+    print('TEST PRINT - METHOD CALLED');
+    
     final cellCol = col.floor();
     final cellRow = row.floor();
     final dx = col - cellCol;
     final dy = row - cellRow;
 
-    // Find nearest edge
-    double minDist = 1.0;
+    // Find nearest edge - use same logic as preview
     String? side;
-    if (dx < _edgeThreshold) { minDist = dx; side = 'left'; }
-    if (1 - dx < minDist) { minDist = 1 - dx; side = 'right'; }
-    if (dy < minDist) { minDist = dy; side = 'top'; }
-    if (1 - dy < minDist) { minDist = 1 - dy; side = 'bottom'; }
+    if (dx < dy && dx < (1 - dx) && dx < (1 - dy)) {
+      side = 'left';
+    } else if ((1 - dx) < dy && (1 - dx) < dx && (1 - dx) < (1 - dy)) {
+      side = 'right';
+    } else if (dy < (1 - dy)) {
+      side = 'top';
+    } else {
+      side = 'bottom';
+    }
 
-    if (side == null || minDist >= _edgeThreshold) return null;
+    if (side == null) {
+      print('FAILED: No side detected');
+      return null;
+    }
+    print('Side detected: $side');
 
-    if (!canPlaceBoundary(side, maxRow, maxCol)) return null;
+    if (!canPlaceBoundary(side, maxRow, maxCol, type)) {
+      print('FAILED: Cannot place boundary');
+      return null;
+    }
+    print('Can place boundary: true');
 
-    if (!isOuterEdge(side, cellRow.toDouble(), cellCol.toDouble(), maxRow, maxCol)) return null;
+    if (!isOuterEdge(side, cellRow.toDouble(), cellCol.toDouble(), maxRow, maxCol)) {
+      print('FAILED: Not on outer edge');
+      return null;
+    }
+    print('Is outer edge: true');
 
-    final startPos = calculateBoundaryStart(side, cellRow.toDouble(), cellCol.toDouble(), maxRow, maxCol);
+    final startPos = calculateBoundaryStart(side, cellRow.toDouble(), cellCol.toDouble(), maxRow, maxCol, type);
     final segment = createBoundarySegment(type, side, startPos['row']!, startPos['col']!);
 
     final allExist = segment.every((b) => existingBoundaries.contains(b));
     
+    print('SUCCESS: Boundary placement completed');
     return BoundaryPlacementResult(
       segment: segment,
       shouldRemove: allExist,
@@ -321,30 +391,58 @@ class BoundaryPlacerService {
     List<GridBoundary> existingBoundaries,
     IconData icon
   ) {
+    print('=== ATTEMPTING GRID BOUNDARY PLACEMENT ===');
+    print('Click at col=$col, row=$row, type=$type');
+    print('TEST PRINT - GRID METHOD CALLED');
+    
     final cellCol = col.floor();
     final cellRow = row.floor();
     final dx = col - cellCol;
     final dy = row - cellRow;
 
-    // Find nearest edge
-    double minDist = 1.0;
+    // Find nearest edge - use same logic as preview
     String? side;
-    if (dx < _edgeThreshold) { minDist = dx; side = 'left'; }
-    if (1 - dx < minDist) { minDist = 1 - dx; side = 'right'; }
-    if (dy < minDist) { minDist = dy; side = 'top'; }
-    if (1 - dy < minDist) { minDist = 1 - dy; side = 'bottom'; }
+    if (dx < dy && dx < (1 - dx) && dx < (1 - dy)) {
+      side = 'left';
+    } else if ((1 - dx) < dy && (1 - dx) < dx && (1 - dx) < (1 - dy)) {
+      side = 'right';
+    } else if (dy < (1 - dy)) {
+      side = 'top';
+    } else {
+      side = 'bottom';
+    }
 
-    if (side == null || minDist >= _edgeThreshold) return null;
+    if (side == null) {
+      print('FAILED: No side detected');
+      return null;
+    }
+    print('Side detected: $side');
 
-    if (!canPlaceBoundary(side, maxRow, maxCol)) return null;
+    if (!canPlaceBoundary(side, maxRow, maxCol, type)) {
+      print('FAILED: Cannot place boundary');
+      return null;
+    }
+    print('Can place boundary: true');
 
-    if (!isOuterEdge(side, cellRow.toDouble(), cellCol.toDouble(), maxRow, maxCol)) return null;
+    if (!isOuterEdge(side, cellRow.toDouble(), cellCol.toDouble(), maxRow, maxCol)) {
+      print('FAILED: Not on outer edge');
+      return null;
+    }
+    print('Is outer edge: true');
 
-    final startPos = calculateBoundaryStart(side, cellRow.toDouble(), cellCol.toDouble(), maxRow, maxCol);
+    final startPos = calculateBoundaryStart(side, cellRow.toDouble(), cellCol.toDouble(), maxRow, maxCol, type);
     final segment = createGridBoundarySegment(type, side, startPos['row']!, startPos['col']!, icon);
 
     final allExist = segment.every((b) => existingBoundaries.contains(b));
     
+    // Print boundary placement info
+    if (segment.isNotEmpty) {
+      final config = BoundaryRegistry.getConfig(type);
+      final span = config?.length.round() ?? 12;
+      print('Boundary placed: type=$type, side=$side, startCol=${startPos['col']}, startRow=${startPos['row']}, span=$span cells, size=${span} inches');
+    }
+    
+    print('SUCCESS: Grid boundary placement completed');
     return GridBoundaryPlacementResult(
       segment: segment,
       shouldRemove: allExist,
@@ -360,73 +458,72 @@ class BoundaryPlacerService {
     double cellInchSize,
     String boundaryType
   ) {
-    print('BoundaryService: received col=$col, row=$row, maxRow=$maxRow, maxCol=$maxCol');
-    
-    final borderInfo = findNearestBorderSide(col, row, maxRow, maxCol);
-    if (borderInfo == null) return null;
-
-    final side = borderInfo['side'] as String;
-    final nearestRow = borderInfo['row'] as int;
-    final nearestCol = borderInfo['col'] as int;
-
-    print('BoundaryService: side=$side, nearestRow=$nearestRow, nearestCol=$nearestCol');
-
-    if (!canPlaceBoundary(side, maxRow, maxCol)) return null;
-
-    // Snap to nearest grid cell
-    final int snappedCol = col.round();
-    final int snappedRow = row.round();
-    
-    print('BoundaryService: snappedCol=$snappedCol, snappedRow=$snappedRow');
-    
-    // Get boundary configuration
+    // Get boundary configuration first
     final config = BoundaryRegistry.getConfig(boundaryType);
-    if (config == null) {
-      print('BoundaryService: No config found for type=$boundaryType');
-      return null;
+    if (config == null) return null;
+    
+    // For preview, be more permissive with edge detection
+    final cellCol = col.floor();
+    final cellRow = row.floor();
+    final dx = col - cellCol;
+    final dy = row - cellRow;
+
+    // Find nearest edge - be more permissive for preview
+    String? side;
+    if (dx < dy && dx < (1 - dx) && dx < (1 - dy)) {
+      side = 'left';
+    } else if ((1 - dx) < dy && (1 - dx) < dx && (1 - dx) < (1 - dy)) {
+      side = 'right';
+    } else if (dy < (1 - dy)) {
+      side = 'top';
+    } else {
+      side = 'bottom';
+    }
+
+    // Calculate start position (simplified)
+    int startCol = cellCol;
+    int startRow = cellRow;
+    
+    // Adjust if boundary would go outside grid
+    final int span = config.length.round();
+    if (side == 'top' || side == 'bottom') {
+      if (startCol + span > maxCol) startCol = maxCol - span;
+      if (startCol < 0) startCol = 0;
+    } else {
+      if (startRow + span > maxRow) startRow = maxRow - span;
+      if (startRow < 0) startRow = 0;
     }
     
-    // Use the configuration dimensions
-    final double length = config.length;
-    final double thickness = config.thickness;
-    
-    print('BoundaryService: using length=$length, thickness=$thickness');
-    
-    // Calculate the preview based on the snapped grid position
+    // Calculate pixel coordinates directly
     double x, y, x2, y2;
     switch (side) {
       case 'top':
-        x = snappedCol * cellInchSize;
+        x = startCol * cellInchSize;
         y = 0;
-        x2 = x + (length * cellInchSize);
-        y2 = thickness * cellInchSize;
+        x2 = (startCol + span) * cellInchSize;
+        y2 = config.thickness * cellInchSize;
         break;
       case 'bottom':
-        x = snappedCol * cellInchSize;
+        x = startCol * cellInchSize;
         y = (maxRow - 1) * cellInchSize;
-        x2 = x + (length * cellInchSize);
-        y2 = y + (thickness * cellInchSize);
+        x2 = (startCol + span) * cellInchSize;
+        y2 = y + (config.thickness * cellInchSize);
         break;
       case 'left':
         x = 0;
-        y = snappedRow * cellInchSize;
-        x2 = thickness * cellInchSize;
-        y2 = y + (length * cellInchSize);
+        y = startRow * cellInchSize;
+        x2 = config.thickness * cellInchSize;
+        y2 = (startRow + span) * cellInchSize;
         break;
       case 'right':
         x = (maxCol - 1) * cellInchSize;
-        y = snappedRow * cellInchSize;
-        x2 = x + (thickness * cellInchSize);
-        y2 = y + (length * cellInchSize);
+        y = startRow * cellInchSize;
+        x2 = x + (config.thickness * cellInchSize);
+        y2 = (startRow + span) * cellInchSize;
         break;
       default:
-        x = nearestCol * cellInchSize;
-        y = nearestRow * cellInchSize;
-        x2 = (side == 'top' || side == 'bottom') ? (nearestCol + 1) * cellInchSize : x;
-        y2 = (side == 'left' || side == 'right') ? (nearestRow + 1) * cellInchSize : y;
+        return null;
     }
-
-    print('BoundaryService: preview x=$x, y=$y, x2=$x2, y2=$y2');
 
     return BoundaryPreviewInfo(
       side: side,
