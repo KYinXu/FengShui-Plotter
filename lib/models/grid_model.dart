@@ -107,6 +107,7 @@ class GridBoundary {
   final int col;
   final String side; // 'top', 'bottom', 'left', 'right'
   final IconData icon;
+  final int span; // Number of grid cells this boundary spans
 
   const GridBoundary({
     required this.type,
@@ -114,6 +115,7 @@ class GridBoundary {
     required this.col,
     required this.side,
     required this.icon,
+    required this.span,
   });
 
   /// Returns the polygon for this boundary (a line segment)
@@ -196,12 +198,14 @@ class BoundaryElement {
   final int row;
   final int col;
   final String side; // 'top', 'bottom', 'left', 'right'
+  final int span; // Number of grid cells this boundary spans
 
   const BoundaryElement({
     required this.type,
     required this.row,
     required this.col,
     required this.side,
+    required this.span,
   });
 
   @override

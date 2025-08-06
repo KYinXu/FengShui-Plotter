@@ -63,33 +63,33 @@ class GridBoundaryWidget extends StatelessWidget {
     // Use fixed pixel thickness instead of scaling with cellInchSize
     final fixedThickness = 8.0; // Fixed pixel thickness for consistent appearance
     
-    // Calculate position and size like the old system
+    // Calculate position and size using span information
     double left, top, width, height;
     
     switch (boundary.side) {
       case 'top':
         left = boundary.col * cellInchSize;
         top = 0;
-        width = cellInchSize; // Full cell width
+        width = boundary.span * cellInchSize; // Span the full width
         height = fixedThickness; // Fixed pixel thickness
         break;
       case 'bottom':
         left = boundary.col * cellInchSize;
         top = (boundary.row * cellInchSize) - (fixedThickness / 2); // Center on the edge
-        width = cellInchSize; // Full cell width
+        width = boundary.span * cellInchSize; // Span the full width
         height = fixedThickness; // Fixed pixel thickness
         break;
       case 'left':
         left = 0;
         top = boundary.row * cellInchSize;
         width = fixedThickness; // Fixed pixel thickness
-        height = cellInchSize; // Full cell height
+        height = boundary.span * cellInchSize; // Span the full height
         break;
       case 'right':
         left = (boundary.col * cellInchSize) - (fixedThickness / 2); // Center on the edge
         top = boundary.row * cellInchSize;
         width = fixedThickness; // Fixed pixel thickness
-        height = cellInchSize; // Full cell height
+        height = boundary.span * cellInchSize; // Span the full height
         break;
       default:
         left = boundary.col * cellInchSize;

@@ -19,6 +19,7 @@ class BoundaryPlacerService {
       col: element.col,
       side: element.side,
       icon: icon,
+      span: element.span,
     );
   }
 
@@ -29,6 +30,7 @@ class BoundaryPlacerService {
       row: boundary.row,
       col: boundary.col,
       side: boundary.side,
+      span: boundary.span,
     );
   }
 
@@ -52,8 +54,6 @@ class BoundaryPlacerService {
     int maxRow, 
     int maxCol
   ) {
-    print('findNearestBorderSide: col=$col, row=$row, maxRow=$maxRow, maxCol=$maxCol');
-    
     final borderChecks = [
       {'side': 'top', 'row': 0, 'col': col.round(), 'dist': (row - 0).abs()},
       {'side': 'bottom', 'row': maxRow - 1, 'col': col.round(), 'dist': (row - (maxRow - 1)).abs()},
@@ -68,7 +68,6 @@ class BoundaryPlacerService {
 
     for (final check in borderChecks) {
       final dist = check['dist'] as double;
-      print('Checking ${check['side']}: distance=${dist.toStringAsFixed(2)}');
       if (dist < minDist) {
         minDist = dist;
         nearestSide = check['side'] as String;
@@ -77,13 +76,10 @@ class BoundaryPlacerService {
       }
     }
 
-    print('Nearest side: $nearestSide, distance: ${minDist.toStringAsFixed(2)}, snap radius: $_snapRadius');
     if (minDist > _snapRadius) {
-      print('FAILED: Distance $minDist exceeds snap radius $_snapRadius');
       return null;
     }
 
-    print('SUCCESS: Found border side $nearestSide at ($nearestCol, $nearestRow)');
     return {
       'side': nearestSide,
       'row': nearestRow,
@@ -104,6 +100,115 @@ class BoundaryPlacerService {
     if ((side == 'top' || side == 'bottom') && maxCol < span) return false;
     if ((side == 'left' || side == 'right') && maxRow < span) return false;
     return true;
+  }
+
+  /// Checks if a boundary would overlap with existing objects
+  static bool wouldOverlapWithObjects(
+    String side,
+    int startRow,
+    int startCol,
+    String boundaryType,
+    List<GridObject> existingObjects
+  ) {
+    final config = BoundaryRegistry.getConfig(boundaryType);
+    final int span = config?.length.round() ?? _span;
+    
+    // Check each cell that the boundary would occupy across its entire span
+    for (int i = 0; i < span; i++) {
+      int checkRow, checkCol;
+      
+      switch (side) {
+        case 'top':
+        case 'bottom':
+          checkRow = side == 'top' ? 0 : startRow;
+          checkCol = startCol + i;
+          break;
+        case 'left':
+        case 'right':
+          checkRow = startRow + i;
+          checkCol = side == 'left' ? 0 : startCol;
+          break;
+        default:
+          return false;
+      }
+      
+      // Check if any object occupies this cell
+      for (final obj in existingObjects) {
+        if (obj.row == checkRow && obj.col == checkCol) {
+          return true; // Overlap detected
+        }
+      }
+    }
+    
+    return false; // No overlap
+  }
+
+  /// Checks if a boundary would overlap with existing boundaries
+  static bool wouldOverlapWithBoundaries(
+    String side,
+    int startRow,
+    int startCol,
+    String boundaryType,
+    List<GridBoundary> existingBoundaries
+  ) {
+    final config = BoundaryRegistry.getConfig(boundaryType);
+    final int span = config?.length.round() ?? _span;
+    
+    // Check each cell that the boundary would occupy across its entire span
+    for (int i = 0; i < span; i++) {
+      int checkRow, checkCol;
+      
+      switch (side) {
+        case 'top':
+        case 'bottom':
+          checkRow = side == 'top' ? 0 : startRow;
+          checkCol = startCol + i;
+          break;
+        case 'left':
+        case 'right':
+          checkRow = startRow + i;
+          checkCol = side == 'left' ? 0 : startCol;
+          break;
+        default:
+          return false;
+      }
+      
+      // Check if any boundary occupies this cell
+      for (final boundary in existingBoundaries) {
+        // Check if the boundary spans this cell
+        bool boundaryOccupiesCell = false;
+        
+        for (int j = 0; j < boundary.span; j++) {
+          int boundaryRow, boundaryCol;
+          
+          switch (boundary.side) {
+            case 'top':
+            case 'bottom':
+              boundaryRow = boundary.side == 'top' ? 0 : boundary.row;
+              boundaryCol = boundary.col + j;
+              break;
+            case 'left':
+            case 'right':
+              boundaryRow = boundary.row + j;
+              boundaryCol = boundary.side == 'left' ? 0 : boundary.col;
+              break;
+            default:
+              continue;
+          }
+          
+          if (boundaryRow == checkRow && boundaryCol == checkCol) {
+            boundaryOccupiesCell = true;
+            break;
+          }
+        }
+        
+        if (boundaryOccupiesCell) {
+          return true; // Overlap detected
+        }
+      }
+    }
+    
+    return false; // No overlap
   }
 
   /// Calculates the starting position for a boundary segment
@@ -172,27 +277,30 @@ class BoundaryPlacerService {
     final config = BoundaryRegistry.getConfig(type);
     final int span = config?.length.round() ?? _span;
     
-    for (int i = 0; i < span; i++) {
-      switch (side) {
-        case 'top':
-        case 'bottom':
-          segment.add(BoundaryElement(
-            type: type, 
-            row: startRow, 
-            col: startCol + i, 
-            side: side
-          ));
-          break;
-        case 'left':
-        case 'right':
-          segment.add(BoundaryElement(
-            type: type, 
-            row: startRow + i, 
-            col: startCol, 
-            side: side
-          ));
-          break;
-      }
+    // Create a single boundary element that represents the entire span
+    // For top/bottom boundaries, use the starting column
+    // For left/right boundaries, use the starting row
+    switch (side) {
+      case 'top':
+      case 'bottom':
+        segment.add(BoundaryElement(
+          type: type, 
+          row: startRow, 
+          col: startCol, // Use starting column for the entire span
+          side: side,
+          span: span
+        ));
+        break;
+      case 'left':
+      case 'right':
+        segment.add(BoundaryElement(
+          type: type, 
+          row: startRow, // Use starting row for the entire span
+          col: startCol, 
+          side: side,
+          span: span
+        ));
+        break;
     }
     
     return segment;
@@ -212,29 +320,32 @@ class BoundaryPlacerService {
     final config = BoundaryRegistry.getConfig(type);
     final int span = config?.length.round() ?? _span;
     
-    for (int i = 0; i < span; i++) {
-      switch (side) {
-        case 'top':
-        case 'bottom':
-          segment.add(GridBoundary(
-            type: type, 
-            row: startRow, 
-            col: startCol + i, 
-            side: side,
-            icon: icon,
-          ));
-          break;
-        case 'left':
-        case 'right':
-          segment.add(GridBoundary(
-            type: type, 
-            row: startRow + i, 
-            col: startCol, 
-            side: side,
-            icon: icon,
-          ));
-          break;
-      }
+    // Create a single boundary that represents the entire span
+    // For top/bottom boundaries, use the starting column
+    // For left/right boundaries, use the starting row
+    switch (side) {
+      case 'top':
+      case 'bottom':
+        segment.add(GridBoundary(
+          type: type, 
+          row: startRow, 
+          col: startCol, // Use starting column for the entire span
+          side: side,
+          icon: icon,
+          span: span, // Include the span information
+        ));
+        break;
+      case 'left':
+      case 'right':
+        segment.add(GridBoundary(
+          type: type, 
+          row: startRow, // Use starting row for the entire span
+          col: startCol, 
+          side: side,
+          icon: icon,
+          span: span, // Include the span information
+        ));
+        break;
     }
     
     return segment;
@@ -277,16 +388,12 @@ class BoundaryPlacerService {
     int maxRow,
     int maxCol,
     List<GridBoundary> existingBoundaries,
-    IconData icon
+    IconData icon,
+    [List<GridObject>? existingObjects]
   ) {
-    print('=== ATTEMPTING BOUNDARY DROP PLACEMENT ===');
-    print('Drop at col=$col, row=$row, type=$type');
-    print('TEST PRINT - DROP METHOD CALLED');
-    
     // Snap to nearest grid cell for placement
     final int snappedCol = col.round();
     final int snappedRow = row.round();
-    print('Snapped to col=$snappedCol, row=$snappedRow');
     
     // Use the same edge detection logic as preview
     final gridCol = snappedCol;
@@ -297,8 +404,6 @@ class BoundaryPlacerService {
     final rightDist = maxCol - 1 - gridCol;
     final topDist = gridRow;
     final bottomDist = maxRow - 1 - gridRow;
-    
-    print('PLACEMENT EDGE DEBUG: Distances - left: $leftDist, right: $rightDist, top: $topDist, bottom: $bottomDist');
     
     // Find the minimum distance
     final minDist = [leftDist, rightDist, topDist, bottomDist].reduce((a, b) => a < b ? a : b);
@@ -311,43 +416,56 @@ class BoundaryPlacerService {
       side = 'left';
       nearestRow = gridRow;
       nearestCol = 0;
-      print('PLACEMENT EDGE DEBUG: Detected LEFT side (distance: $leftDist)');
     } else if (minDist == rightDist) {
       side = 'right';
       nearestRow = gridRow;
       nearestCol = maxCol - 1;
-      print('PLACEMENT EDGE DEBUG: Detected RIGHT side (distance: $rightDist)');
     } else if (minDist == topDist) {
       side = 'top';
       nearestRow = 0;
       nearestCol = gridCol;
-      print('PLACEMENT EDGE DEBUG: Detected TOP side (distance: $topDist)');
     } else {
       side = 'bottom';
       nearestRow = maxRow - 1;
       nearestCol = gridCol;
-      print('PLACEMENT EDGE DEBUG: Detected BOTTOM side (distance: $bottomDist)');
     }
 
     if (!canPlaceBoundary(side, maxRow, maxCol, type)) {
-      print('FAILED: Cannot place boundary on side $side');
       return null;
     }
-    print('Can place boundary: true');
 
     final startPos = calculateBoundaryStart(side, nearestRow.toDouble(), nearestCol.toDouble(), maxRow, maxCol, type);
-    print('Start position: row=${startPos['row']}, col=${startPos['col']}');
+    
+    // Check for object collisions if objects are provided
+    if (existingObjects != null && existingObjects.isNotEmpty) {
+      if (wouldOverlapWithObjects(side, startPos['row']!, startPos['col']!, type, existingObjects)) {
+        return null;
+      }
+    }
+    
+    // Check for boundary collisions
+    if (existingBoundaries.isNotEmpty) {
+      if (wouldOverlapWithBoundaries(side, startPos['row']!, startPos['col']!, type, existingBoundaries)) {
+        return null;
+      }
+    }
     
     final segment = createGridBoundarySegment(type, side, startPos['row']!, startPos['col']!, icon);
-    print('Created segment with ${segment.length} boundaries');
 
-    final allExist = segment.every((b) => existingBoundaries.contains(b));
-    print('All boundaries exist: $allExist');
+    // Check if this exact boundary already exists (same type, side, position, and span)
+    final config = BoundaryRegistry.getConfig(type);
+    final int span = config?.length.round() ?? _span;
+    final exactMatch = existingBoundaries.any((existing) => 
+      existing.type == type && 
+      existing.side == side && 
+      existing.row == startPos['row'] && 
+      existing.col == startPos['col'] &&
+      existing.span == span
+    );
     
-    print('SUCCESS: Boundary drop placement completed');
     return GridBoundaryPlacementResult(
       segment: segment,
-      shouldRemove: allExist,
+      shouldRemove: exactMatch, // Only remove if exact same boundary exists
     );
   }
 
@@ -358,12 +476,9 @@ class BoundaryPlacerService {
     double row,
     int maxRow,
     int maxCol,
-    List<BoundaryElement> existingBoundaries
+    List<BoundaryElement> existingBoundaries,
+    [List<GridObject>? existingObjects]
   ) {
-    print('=== ATTEMPTING BOUNDARY PLACEMENT ===');
-    print('Click at col=$col, row=$row, type=$type');
-    print('TEST PRINT - METHOD CALLED');
-    
     final cellCol = col.floor();
     final cellRow = row.floor();
     final dx = col - cellCol;
@@ -379,47 +494,66 @@ class BoundaryPlacerService {
     final topDist = gridRow;
     final bottomDist = maxRow - 1 - gridRow;
     
-    print('CLICK EDGE DEBUG: Distances - left: $leftDist, right: $rightDist, top: $topDist, bottom: $bottomDist');
-    
     // Find the minimum distance
     final minDist = [leftDist, rightDist, topDist, bottomDist].reduce((a, b) => a < b ? a : b);
     
     String side;
     if (minDist == leftDist) {
       side = 'left';
-      print('CLICK EDGE DEBUG: Detected LEFT side (distance: $leftDist)');
     } else if (minDist == rightDist) {
       side = 'right';
-      print('CLICK EDGE DEBUG: Detected RIGHT side (distance: $rightDist)');
     } else if (minDist == topDist) {
       side = 'top';
-      print('CLICK EDGE DEBUG: Detected TOP side (distance: $topDist)');
     } else {
       side = 'bottom';
-      print('CLICK EDGE DEBUG: Detected BOTTOM side (distance: $bottomDist)');
     }
 
     if (!canPlaceBoundary(side, maxRow, maxCol, type)) {
-      print('FAILED: Cannot place boundary');
       return null;
     }
-    print('Can place boundary: true');
 
     if (!isOuterEdge(side, cellRow.toDouble(), cellCol.toDouble(), maxRow, maxCol)) {
-      print('FAILED: Not on outer edge');
       return null;
     }
-    print('Is outer edge: true');
 
     final startPos = calculateBoundaryStart(side, cellRow.toDouble(), cellCol.toDouble(), maxRow, maxCol, type);
+    
+    // Check for object collisions if objects are provided
+    if (existingObjects != null && existingObjects.isNotEmpty) {
+      if (wouldOverlapWithObjects(side, startPos['row']!, startPos['col']!, type, existingObjects)) {
+        return null;
+      }
+    }
+    
+    // Check for boundary collisions (convert BoundaryElements to GridBoundaries for checking)
+    if (existingBoundaries.isNotEmpty) {
+      final gridBoundaries = existingBoundaries.map((e) => GridBoundary(
+        type: e.type,
+        row: e.row,
+        col: e.col,
+        side: e.side,
+        icon: Icons.door_front_door, // Default icon
+        span: e.span,
+      )).toList();
+      
+      if (wouldOverlapWithBoundaries(side, startPos['row']!, startPos['col']!, type, gridBoundaries)) {
+        return null;
+      }
+    }
+    
     final segment = createBoundarySegment(type, side, startPos['row']!, startPos['col']!);
 
-    final allExist = segment.every((b) => existingBoundaries.contains(b));
+    // Check if this exact boundary already exists (same type, side, and position)
+    final exactMatch = existingBoundaries.any((existing) => 
+      existing.type == type && 
+      existing.side == side && 
+      existing.row == startPos['row'] && 
+      existing.col == startPos['col']
+    );
     
-    print('SUCCESS: Boundary placement completed');
     return BoundaryPlacementResult(
       segment: segment,
-      shouldRemove: allExist,
+      shouldRemove: exactMatch, // Only remove if exact same boundary exists
     );
   }
 
@@ -431,12 +565,9 @@ class BoundaryPlacerService {
     int maxRow,
     int maxCol,
     List<GridBoundary> existingBoundaries,
-    IconData icon
+    IconData icon,
+    [List<GridObject>? existingObjects]
   ) {
-    print('=== ATTEMPTING GRID BOUNDARY PLACEMENT ===');
-    print('Click at col=$col, row=$row, type=$type');
-    print('TEST PRINT - GRID METHOD CALLED');
-    
     final cellCol = col.floor();
     final cellRow = row.floor();
     final dx = col - cellCol;
@@ -452,54 +583,57 @@ class BoundaryPlacerService {
     final topDist = gridRow;
     final bottomDist = maxRow - 1 - gridRow;
     
-    print('GRID CLICK EDGE DEBUG: Distances - left: $leftDist, right: $rightDist, top: $topDist, bottom: $bottomDist');
-    
     // Find the minimum distance
     final minDist = [leftDist, rightDist, topDist, bottomDist].reduce((a, b) => a < b ? a : b);
     
     String side;
     if (minDist == leftDist) {
       side = 'left';
-      print('GRID CLICK EDGE DEBUG: Detected LEFT side (distance: $leftDist)');
     } else if (minDist == rightDist) {
       side = 'right';
-      print('GRID CLICK EDGE DEBUG: Detected RIGHT side (distance: $rightDist)');
     } else if (minDist == topDist) {
       side = 'top';
-      print('GRID CLICK EDGE DEBUG: Detected TOP side (distance: $topDist)');
     } else {
       side = 'bottom';
-      print('GRID CLICK EDGE DEBUG: Detected BOTTOM side (distance: $bottomDist)');
     }
 
     if (!canPlaceBoundary(side, maxRow, maxCol, type)) {
-      print('FAILED: Cannot place boundary');
       return null;
     }
-    print('Can place boundary: true');
 
     if (!isOuterEdge(side, cellRow.toDouble(), cellCol.toDouble(), maxRow, maxCol)) {
-      print('FAILED: Not on outer edge');
       return null;
     }
-    print('Is outer edge: true');
 
     final startPos = calculateBoundaryStart(side, cellRow.toDouble(), cellCol.toDouble(), maxRow, maxCol, type);
-    final segment = createGridBoundarySegment(type, side, startPos['row']!, startPos['col']!, icon);
-
-    final allExist = segment.every((b) => existingBoundaries.contains(b));
     
-    // Print boundary placement info
-    if (segment.isNotEmpty) {
-      final config = BoundaryRegistry.getConfig(type);
-      final span = config?.length.round() ?? 12;
-      print('Boundary placed: type=$type, side=$side, startCol=${startPos['col']}, startRow=${startPos['row']}, span=$span cells, size=${span} inches');
+    // Check for object collisions if objects are provided
+    if (existingObjects != null && existingObjects.isNotEmpty) {
+      if (wouldOverlapWithObjects(side, startPos['row']!, startPos['col']!, type, existingObjects)) {
+        return null;
+      }
     }
     
-    print('SUCCESS: Grid boundary placement completed');
+    // Check for boundary collisions
+    if (existingBoundaries.isNotEmpty) {
+      if (wouldOverlapWithBoundaries(side, startPos['row']!, startPos['col']!, type, existingBoundaries)) {
+        return null;
+      }
+    }
+    
+    final segment = createGridBoundarySegment(type, side, startPos['row']!, startPos['col']!, icon);
+
+    // Check if this exact boundary already exists (same type, side, and position)
+    final exactMatch = existingBoundaries.any((existing) => 
+      existing.type == type && 
+      existing.side == side && 
+      existing.row == startPos['row'] && 
+      existing.col == startPos['col']
+    );
+    
     return GridBoundaryPlacementResult(
       segment: segment,
-      shouldRemove: allExist,
+      shouldRemove: exactMatch, // Only remove if exact same boundary exists
     );
   }
 
@@ -529,8 +663,6 @@ class BoundaryPlacerService {
     final gridCol = col.round();
     final gridRow = row.round();
     
-    print('PREVIEW EDGE DEBUG: gridCol=$gridCol, gridRow=$gridRow, maxCol=$maxCol, maxRow=$maxRow');
-    
     // Determine which edge is closest based on grid position
     // Check all edges and pick the closest one
     final leftDist = gridCol;
@@ -538,23 +670,17 @@ class BoundaryPlacerService {
     final topDist = gridRow;
     final bottomDist = maxRow - 1 - gridRow;
     
-    print('PREVIEW EDGE DEBUG: Distances - left: $leftDist, right: $rightDist, top: $topDist, bottom: $bottomDist');
-    
     // Find the minimum distance
     final minDist = [leftDist, rightDist, topDist, bottomDist].reduce((a, b) => a < b ? a : b);
     
     if (minDist == leftDist) {
       side = 'left';
-      print('PREVIEW EDGE DEBUG: Detected LEFT side (distance: $leftDist)');
     } else if (minDist == rightDist) {
       side = 'right';
-      print('PREVIEW EDGE DEBUG: Detected RIGHT side (distance: $rightDist)');
     } else if (minDist == topDist) {
       side = 'top';
-      print('PREVIEW EDGE DEBUG: Detected TOP side (distance: $topDist)');
     } else {
       side = 'bottom';
-      print('PREVIEW EDGE DEBUG: Detected BOTTOM side (distance: $bottomDist)');
     }
 
     // Calculate start position (simplified)

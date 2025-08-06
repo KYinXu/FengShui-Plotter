@@ -306,11 +306,9 @@ class GridWidgetState extends State<GridWidget> {
               final double col = gridLocal.dx / cellInchSize;
               final double row = gridLocal.dy / cellInchSize;
               
-              print('GRID WIDGET: Calling boundary drop method for type=$type');
               final result = BoundaryPlacerService.handleGridBoundaryDrop(
-                type, col, row, maxRow, maxCol, widget.grid.boundaries, details.data['icon']
+                type, col, row, maxRow, maxCol, widget.grid.boundaries, details.data['icon'], widget.grid.objects
               );
-              print('GRID WIDGET: Boundary drop result = ${result != null ? "SUCCESS" : "FAILED"}');
               
               if (result != null) {
                 if (result.shouldRemove) {
@@ -327,7 +325,20 @@ class GridWidgetState extends State<GridWidget> {
                         }
                       }
                   }
+                  
+                  // Print all placed boundaries when a new one is placed
+                  print('=== ALL PLACED BOUNDARIES ===');
+                  for (int i = 0; i < widget.grid.boundaries.length; i++) {
+                    final boundary = widget.grid.boundaries[i];
+                    print('${i + 1}. Type: ${boundary.type}, Side: ${boundary.side}, Position: (${boundary.row}, ${boundary.col})');
+                  }
+                  print('=== NEW BOUNDARY PLACED ===');
+                  print('Type: $type, Side: ${result.segment.first.side}, Position: (${result.segment.first.row}, ${result.segment.first.col})');
+                  print('=== TOTAL BOUNDARIES: ${widget.grid.boundaries.length} ===');
                 }
+              } else {
+                // Clear preview when placement fails (e.g., due to collision)
+                _updatePreview(null, null, null);
               }
               return;
             }
@@ -503,11 +514,9 @@ class GridWidgetState extends State<GridWidget> {
               final maxCol = widget.grid.widthInches.floor();
               final type = widget.boundaryMode == 'door' ? 'door' : 'window';
               
-              print('GRID WIDGET: Calling placement method for type=$type');
               final result = BoundaryPlacerService.handleGridBoundaryClick(
-                type, col, row, maxRow, maxCol, widget.grid.boundaries, Icons.door_front_door
+                type, col, row, maxRow, maxCol, widget.grid.boundaries, Icons.door_front_door, widget.grid.objects
               );
-              print('GRID WIDGET: Placement result = ${result != null ? "SUCCESS" : "FAILED"}');
               
               if (result != null) {
                 if (result.shouldRemove) {
@@ -524,7 +533,20 @@ class GridWidgetState extends State<GridWidget> {
                       }
                     }
                   }
+                  
+                  // Print all placed boundaries when a new one is placed
+                  print('=== ALL PLACED BOUNDARIES ===');
+                  for (int i = 0; i < widget.grid.boundaries.length; i++) {
+                    final boundary = widget.grid.boundaries[i];
+                    print('${i + 1}. Type: ${boundary.type}, Side: ${boundary.side}, Position: (${boundary.row}, ${boundary.col})');
+                  }
+                  print('=== NEW BOUNDARY PLACED ===');
+                  print('Type: $type, Side: ${result.segment.first.side}, Position: (${result.segment.first.row}, ${result.segment.first.col})');
+                  print('=== TOTAL BOUNDARIES: ${widget.grid.boundaries.length} ===');
                 }
+              } else {
+                // Clear preview when placement fails (e.g., due to collision)
+                _updatePreview(null, null, null);
               }
             }
           },
