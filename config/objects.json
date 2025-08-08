@@ -1,0 +1,30 @@
+{
+  "objects": {
+    "bed": {
+      "width": 80,
+      "height": 60,
+      "icon": "bed",
+      "type": "furniture"
+    },
+    "desk": {
+      "width": 48,
+      "height": 24,
+      "icon": "desk",
+      "type": "furniture"
+    },
+    "door": {
+      "width": 30,
+      "height": 0,
+      "icon": "door_front_door",
+      "type": "boundary"
+    },
+    "window": {
+      "width": 24,
+      "height": 0,
+      "icon": "window",
+      "type": "boundary"
+    }
+  },
+  "grid_cell_size": 12,
+  "units": "inches"
+} 

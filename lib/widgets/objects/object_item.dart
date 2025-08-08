@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../../constants/object_config.dart';
 
 class ObjectItem extends StatelessWidget {
   final String label;
@@ -40,17 +41,7 @@ class ObjectItem extends StatelessWidget {
   }
 
   static Map<String, int> getObjectDimensions(String type) {
-    switch (type.toLowerCase()) {
-      case 'bed':
-        return {'width': 80, 'height': 60};
-      case 'desk':
-        return {'width': 48, 'height': 24};
-      case 'door':
-      case 'window':
-        return {'width': 0, 'height': 0};
-      default:
-        return {'width': 1, 'height': 1};
-    }
+    return ObjectConfig.getDimensions(type);
   }
 
   /// Returns a polygon (list of points) for the object's shape, origin at (0,0)

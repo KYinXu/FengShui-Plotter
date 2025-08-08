@@ -9,6 +9,7 @@ import '../widgets/objects/object_palette.dart';
 import '../widgets/rotation_control_widget.dart';
 import '../services/auto_placer_service.dart';
 import '../widgets/objects/object_item.dart';
+import '../constants/object_config.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -114,18 +115,44 @@ class _HomeScreenState extends State<HomeScreen> {
                         try {
                           // Prepare grid data for the Python service
                           final gridData = {
-                            'length': _currentGrid!.lengthInches,
-                            'width': _currentGrid!.widthInches,
-                            // Add more fields if needed
+                            'grid_width': _currentGrid!.widthInches.floor(),
+                            'grid_height': _currentGrid!.lengthInches.floor(),
                           };
-                          final placements = await AutoPlacerService.getPlacements(gridData);
+                          final response = await AutoPlacerService.getPlacements(gridData);
+                          
                           setState(() {
-                            _placedObjects = placements.map((p) => GridObject(
-                              type: p['type'] ?? 'Unknown',
-                              row: p['y'] ?? 0,
-                              col: p['x'] ?? 0,
-                              icon: Icons.auto_awesome, // Use a default icon or map type to icon
-                            )).toList();
+                            // Clear the grid first
+                            _placedObjects = [];
+                            _boundaries = [];
+                            
+                            // Place new objects
+                            final placements = response['placements'] as List<dynamic>;
+                            _placedObjects = placements.map((p) {
+                              final placement = p as Map<String, dynamic>;
+                              return GridObject(
+                                type: placement['type'] ?? 'Unknown',
+                                row: (placement['y'] ?? 0) as int,
+                                col: (placement['x'] ?? 0) as int,
+                                icon: ObjectConfig.getIcon(placement['type'] ?? 'Unknown'),
+                              );
+                            }).toList();
+                            
+                            // Print all placed objects and boundaries
+                            print('=== AUTO PLACEMENT COMPLETED ===');
+                            print('Grid Dimensions: ${_currentGrid!.widthInches.floor()}x${_currentGrid!.lengthInches.floor()}');
+                            print('');
+                            print('PLACED OBJECTS:');
+                            for (int i = 0; i < _placedObjects.length; i++) {
+                              final obj = _placedObjects[i];
+                              print('${i + 1}. ${obj.type.toUpperCase()}: Position (${obj.col}, ${obj.row})');
+                            }
+                            print('');
+                            print('PLACED BOUNDARIES:');
+                            for (int i = 0; i < _boundaries.length; i++) {
+                              final boundary = _boundaries[i];
+                              print('${i + 1}. ${boundary.type.toUpperCase()}: Position (${boundary.col}, ${boundary.row}) - Side: ${boundary.side}');
+                            }
+                            print('=== TOTAL OBJECTS: ${_placedObjects.length} | TOTAL BOUNDARIES: ${_boundaries.length} ===');
                           });
                         } catch (e) {
                           ScaffoldMessenger.of(context).showSnackBar(
