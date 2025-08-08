@@ -1,16 +1,17 @@
-import 'package:feng_shui_plotter/widgets/confirmation_dialog.dart';
 import 'package:flutter/material.dart';
 import 'package:window_manager/window_manager.dart';
 import '../constants/app_constants.dart';
 import '../models/grid_model.dart';
-import '../widgets/grid_input_form.dart';
-import '../widgets/grid/grid_widget.dart';
-import '../widgets/objects/object_palette.dart';
-import '../widgets/rotation_control_widget.dart';
 import '../services/auto_placer_service.dart';
-import '../widgets/objects/object_item.dart';
-import '../constants/object_config.dart';
+import '../services/feng_shui_scoring_service.dart';
+import '../widgets/confirmation_dialog.dart';
 import '../widgets/feng_shui_score_bar.dart';
+import '../widgets/grid/grid_widget.dart';
+import '../widgets/grid_input_form.dart';
+import '../widgets/objects/object_palette.dart';
+import '../widgets/objects/object_item.dart';
+import '../widgets/rotation_control_widget.dart';
+import '../constants/object_config.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -33,6 +34,7 @@ class _HomeScreenState extends State<HomeScreen> {
   // Boundary mode: 'none', 'door', 'window'
   String _boundaryMode = 'none';
   double? _currentFengShuiScore;
+  String? _currentScoreMessage;
 
   void _onGridCreated(Grid grid) {
     setState(() {
@@ -69,138 +71,91 @@ class _HomeScreenState extends State<HomeScreen> {
     });
   }
 
-  void _calculateCurrentFengShuiScore() {
-    // More strict Feng Shui score calculation based on current layout
+  void _calculateCurrentFengShuiScore() async {
+    // Use live scoring service for real-time Feng Shui calculation
     if (_currentGrid == null || (_placedObjects.isEmpty && _boundaries.isEmpty)) {
       setState(() {
         _currentFengShuiScore = null;
+        _currentScoreMessage = null;
       });
       return;
     }
 
-    double score = 0.0;
-    final gridWidth = _currentGrid!.widthInches.floor();
-    final gridHeight = _currentGrid!.lengthInches.floor();
-    
-    // Check for invalid configurations first
-    bool hasInvalidConfig = false;
-    
-    // Check for out-of-bounds objects
-    for (final obj in _placedObjects) {
-      final dims = ObjectConfig.getDimensions(obj.type);
-      final objWidth = (dims['width'] ?? 1).toDouble();
-      final objHeight = (dims['height'] ?? 1).toDouble();
-      
-      if (obj.col < 0 || obj.row < 0 || 
-          obj.col + objWidth > gridWidth || 
-          obj.row + objHeight > gridHeight) {
-        hasInvalidConfig = true;
-        break;
+    try {
+      // Test server connection first
+      final serverConnected = await FengShuiScoringService.testServerConnection();
+      if (!serverConnected) {
+        print('WARNING: Python server is not running!');
+        print('Please start the server with: cd scripts && python run_server.py');
+        setState(() {
+          _currentFengShuiScore = 0.0;
+          _currentScoreMessage = 'Server not running';
+        });
+        return;
       }
-    }
-    
-    // Check for overlapping objects
-    for (int i = 0; i < _placedObjects.length; i++) {
-      for (int j = i + 1; j < _placedObjects.length; j++) {
-        final obj1 = _placedObjects[i];
-        final obj2 = _placedObjects[j];
-        
-        final dims1 = ObjectConfig.getDimensions(obj1.type);
-        final dims2 = ObjectConfig.getDimensions(obj2.type);
-        
-        final width1 = (dims1['width'] ?? 1).toDouble();
-        final height1 = (dims1['height'] ?? 1).toDouble();
-        final width2 = (dims2['width'] ?? 1).toDouble();
-        final height2 = (dims2['height'] ?? 1).toDouble();
-        
-        // Check for overlap
-        if (!(obj1.col + width1 <= obj2.col || obj2.col + width2 <= obj1.col ||
-              obj1.row + height1 <= obj2.row || obj2.row + height2 <= obj1.row)) {
-          hasInvalidConfig = true;
-          break;
-        }
-      }
-      if (hasInvalidConfig) break;
-    }
-    
-    // If invalid configuration, return very low score
-    if (hasInvalidConfig) {
-      setState(() {
-        _currentFengShuiScore = 5.0; // Very low score for invalid layouts
-      });
-      return;
-    }
-    
-    // Base score for having objects (much lower)
-    score += _placedObjects.length * 5.0; // Reduced from 10.0
-    score += _boundaries.length * 2.0; // Reduced from 5.0
-    
-    // Bonus for balanced layout (objects spread out) - more strict
-    if (_placedObjects.length > 1) {
-      // Calculate distance between objects
-      double totalDistance = 0.0;
-      int comparisons = 0;
+
+      // Convert placed objects to the format expected by the Python service
+      final placements = <Map<String, dynamic>>[];
       
-      for (int i = 0; i < _placedObjects.length; i++) {
-        for (int j = i + 1; j < _placedObjects.length; j++) {
-          final obj1 = _placedObjects[i];
-          final obj2 = _placedObjects[j];
-          final distance = ((obj1.col - obj2.col).abs() + (obj1.row - obj2.row).abs()).toDouble();
-          totalDistance += distance;
-          comparisons++;
-        }
+      // Add furniture objects
+      for (final obj in _placedObjects) {
+        placements.add({
+          'type': obj.type,
+          'x': obj.col,
+          'y': obj.row,
+        });
       }
       
-      if (comparisons > 0) {
-        final avgDistance = totalDistance / comparisons;
-        score += avgDistance * 1.0; // Reduced from 2.0
-      }
-    }
-    
-    // Bonus for boundaries on walls - more strict
-    for (final boundary in _boundaries) {
-      if (boundary.col == 0 || boundary.col == gridWidth - 1 || 
-          boundary.row == 0 || boundary.row == gridHeight - 1) {
-        score += 8.0; // Reduced from 15.0
-      }
-    }
-    
-    // Penalty for objects too close to boundaries - more strict
-    for (final obj in _placedObjects) {
+      // Add boundary objects (doors and windows)
       for (final boundary in _boundaries) {
-        final distance = ((obj.col - boundary.col).abs() + (obj.row - boundary.row).abs()).toDouble();
-        if (distance < 5) { // Increased from 3
-          score -= 10.0; // Increased penalty from 5.0
+        placements.add({
+          'type': boundary.type,
+          'x': boundary.col,
+          'y': boundary.row,
+        });
+      }
+
+      final gridWidth = _currentGrid!.widthInches.floor();
+      final gridHeight = _currentGrid!.lengthInches.floor();
+
+      final result = await FengShuiScoringService.calculateLiveScore(
+        placements: placements,
+        gridWidth: gridWidth,
+        gridHeight: gridHeight,
+      );
+
+      setState(() {
+        _currentFengShuiScore = result['score']?.toDouble() ?? 0.0;
+        _currentScoreMessage = result['message'];
+      });
+
+      // Print score breakdown for debugging
+      if (result['breakdown'] != null) {
+        print('=== LIVE SCORE BREAKDOWN ===');
+        print('Total Score: ${result['score']}');
+        print('Bagua Scores: ${result['breakdown']['bagua_scores']}');
+        print('Command Position: ${result['breakdown']['command_position']}');
+        print('Chi Flow: ${result['breakdown']['chi_flow']}');
+        print('Layout Bonus: ${result['breakdown']['layout_bonus']}');
+        print('Wall Bonuses: ${result['breakdown']['wall_bonuses']}');
+        print('Feng Shui Penalties: ${result['breakdown']['feng_shui_penalties']}');
+        print('Door Blocked: ${result['breakdown']['door_blocked']}');
+        print('Furniture Overlap: ${result['breakdown']['furniture_overlap']}');
+        print('Message: ${result['message']}');
+        if (result['recommendations'] != null) {
+          print('Recommendations: ${result['recommendations']}');
         }
+        print('===========================');
       }
+
+    } catch (e) {
+      print('Error calculating live score: $e');
+      // Fallback to a simple score if the service is unavailable
+      setState(() {
+        _currentFengShuiScore = _placedObjects.length * 10.0;
+        _currentScoreMessage = 'Error calculating score';
+      });
     }
-    
-    // Penalty for objects too close to each other
-    for (int i = 0; i < _placedObjects.length; i++) {
-      for (int j = i + 1; j < _placedObjects.length; j++) {
-        final obj1 = _placedObjects[i];
-        final obj2 = _placedObjects[j];
-        final distance = ((obj1.col - obj2.col).abs() + (obj1.row - obj2.row).abs()).toDouble();
-        if (distance < 8) { // Penalty for objects too close
-          score -= 15.0;
-        }
-      }
-    }
-    
-    // Penalty for objects in corners (bad Feng Shui)
-    for (final obj in _placedObjects) {
-      if ((obj.col == 0 || obj.col == gridWidth - 1) && 
-          (obj.row == 0 || obj.row == gridHeight - 1)) {
-        score -= 20.0; // Heavy penalty for corner placement
-      }
-    }
-    
-    // Normalize score to 0-100 range with more realistic distribution
-    score = score.clamp(0.0, 100.0);
-    
-    setState(() {
-      _currentFengShuiScore = score;
-    });
   }
 
 
@@ -561,6 +516,7 @@ class _HomeScreenState extends State<HomeScreen> {
                           onAddBoundary: _handleAddBoundary,
                           onRemoveBoundary: _handleRemoveBoundary,
                           fengShuiScore: _currentFengShuiScore,
+                          fengShuiMessage: _currentScoreMessage,
                         ),
                       ),
                       if (_isAutoPlacing)

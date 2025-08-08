@@ -18,6 +18,7 @@ class GridWidget extends StatefulWidget {
   final void Function(GridBoundary boundary)? onAddBoundary;
   final void Function(GridBoundary boundary)? onRemoveBoundary;
   final double? fengShuiScore; // New parameter for Feng Shui score
+  final String? fengShuiMessage; // New parameter for Feng Shui message
 
   const GridWidget({
     super.key,
@@ -27,6 +28,7 @@ class GridWidget extends StatefulWidget {
     this.onAddBoundary,
     this.onRemoveBoundary,
     this.fengShuiScore, // Add to constructor
+    this.fengShuiMessage, // Add to constructor
   });
 
   @override
@@ -618,6 +620,7 @@ class GridWidgetState extends State<GridWidget> {
               FengShuiScoreBar(
                 score: widget.fengShuiScore,
                 maxScore: 100.0,
+                message: widget.fengShuiMessage,
               ),
             ],
           ),

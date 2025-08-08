@@ -1,13 +1,16 @@
 import 'package:flutter/material.dart';
+import '../services/feng_shui_scoring_service.dart';
 
 class FengShuiScoreBar extends StatelessWidget {
   final double? score;
   final double maxScore;
+  final String? message;
 
   const FengShuiScoreBar({
     super.key,
     required this.score,
     this.maxScore = 100.0,
+    this.message,
   });
 
   @override
@@ -151,15 +154,6 @@ class FengShuiScoreBar extends StatelessWidget {
               fontWeight: FontWeight.bold,
               fontSize: 16,
               color: color,
-            ),
-          ),
-          
-          // Rating
-          Text(
-            rating,
-            style: TextStyle(
-              fontSize: 10,
-              color: color.withOpacity(0.8),
             ),
           ),
           

@@ -80,12 +80,17 @@ class FengShuiOptimizer:
             
             # Feng Shui penalty weights
             'feng_shui_penalties': {
-                'bed_away_from_wall': 150.0,      # Penalty for bed not against wall
-                'door_at_bed_foot': 200.0,        # Penalty for door at foot of bed
-                'window_next_to_door': 100.0,     # Penalty for window too close to door
-                'same_wall_door_window': 150.0,   # Extra penalty for door/window on same wall
-                'bed_under_window': 120.0,        # Penalty for bed under window
-                'door_facing_bed': 180.0          # Penalty for door directly facing bed
+                'bed_away_from_wall': 300.0,      # Penalty for bed not against wall
+                'door_at_bed_foot': 400.0,        # Penalty for door at foot of bed
+                'window_next_to_door': 200.0,     # Penalty for window too close to door
+                'same_wall_door_window': 300.0,   # Extra penalty for door/window on same wall
+                'bed_under_window': 250.0,        # Penalty for bed under window
+                'door_facing_bed': 350.0,         # Penalty for door directly facing bed
+                'furniture_floating': 200.0,      # Penalty for furniture floating in middle
+                'wall_placement_bonus': 50.0,     # Bonus for furniture against walls
+                'corner_placement_bonus': 100.0,  # Extra bonus for corner placement
+                'door_blocked': 2000.0,           # Extremely harsh penalty for blocked doors
+                'furniture_overlap': 3000.0       # Extremely harsh penalty for overlapping furniture
             },
             
             # Algorithm parameters
@@ -162,7 +167,7 @@ class FengShuiOptimizer:
         preferences = bagua_preferences.get(obj_type, [4, 4, 4, 4, 4, 4, 4, 4, 4])
         zone_score = preferences[zone_index]
         
-        return zone_score * 15.0  # Increased from 10.0
+        return zone_score * 8.0  # Reduced from 15.0
 
     def _calculate_command_position_score(self, placements: List[Dict]) -> float:
         """Calculate command position score (bed should face door)."""
@@ -186,9 +191,9 @@ class FengShuiOptimizer:
         
         # Optimal distance is moderate (not too close, not too far)
         optimal_distance = min(self.grid_width, self.grid_height) * 0.3
-        distance_score = max(0, 50 - abs(distance - optimal_distance))
+        distance_score = max(0, 30 - abs(distance - optimal_distance))
         
-        return distance_score * 2.0  # Increased from 1.0
+        return distance_score * 1.0  # Reduced from 2.0
 
     def _calculate_chi_flow_score(self, placements: List[Dict]) -> float:
         """Calculate chi flow score (energy flow through space)."""
@@ -210,11 +215,11 @@ class FengShuiOptimizer:
                 
                 # Optimal spacing is moderate
                 if 5 <= distance <= 20:
-                    total_score += 20.0  # Increased from 10.0
+                    total_score += 10.0  # Reduced from 20.0
                 elif distance < 5:
-                    total_score -= 10.0  # Penalty for too close
+                    total_score -= 15.0  # Increased penalty for too close
                 else:
-                    total_score += 5.0  # Small bonus for far apart
+                    total_score += 2.0  # Reduced bonus for far apart
         
         # Bonus for balanced layout (objects not all clustered)
         if len(placements) > 2:
@@ -224,7 +229,7 @@ class FengShuiOptimizer:
             
             # Calculate spread
             spread = sum(math.sqrt((p['x'] - center_x)**2 + (p['y'] - center_y)**2) for p in placements)
-            spread_score = min(50, spread / len(placements))
+            spread_score = min(25, spread / len(placements))
             total_score += spread_score
         
         return total_score
@@ -248,19 +253,61 @@ class FengShuiOptimizer:
             elif placement['type'] == 'window':
                 window_placement = placement
         
-        # Penalty 1: Bed away from walls (bed should be against a wall)
-        if bed_placement:
-            x, y = bed_placement['x'], bed_placement['y']
-            bed_width, bed_height = get_object_grid_dimensions('bed')
+        # Improved wall detection and furniture placement scoring
+        for placement in placements:
+            x, y = placement['x'], placement['y']
+            obj_type = placement['type']
             
-            # Check if bed is against any wall
-            against_wall = (x == 0 or x + bed_width >= self.grid_width - 1 or 
-                           y == 0 or y + bed_height >= self.grid_height - 1)
-            
-            if not against_wall:
-                penalty_weight = self.config['feng_shui_penalties']['bed_away_from_wall']
-                penalty_score -= penalty_weight
-                print(f"DEBUG: Bed penalty - not against wall at ({x}, {y})")
+            if obj_type in ['bed', 'desk']:  # Only apply to furniture
+                obj_width, obj_height = get_object_grid_dimensions(obj_type)
+                
+                # Calculate distance to nearest wall
+                distance_to_left_wall = x
+                distance_to_right_wall = self.grid_width - (x + obj_width)
+                distance_to_top_wall = y
+                distance_to_bottom_wall = self.grid_height - (y + obj_height)
+                
+                min_distance_to_wall = min(distance_to_left_wall, distance_to_right_wall, 
+                                         distance_to_top_wall, distance_to_bottom_wall)
+                
+                # Bonus for being against a wall (distance = 0)
+                if min_distance_to_wall == 0:
+                    bonus_weight = self.config['feng_shui_penalties']['wall_placement_bonus']
+                    penalty_score += bonus_weight
+                    print(f"DEBUG: {obj_type} bonus - against wall at ({x}, {y})")
+                    
+                    # Extra bonus for corner placement (against two walls)
+                    walls_touched = 0
+                    if distance_to_left_wall == 0 or distance_to_right_wall == 0:
+                        walls_touched += 1
+                    if distance_to_top_wall == 0 or distance_to_bottom_wall == 0:
+                        walls_touched += 1
+                    
+                    if walls_touched >= 2:
+                        corner_bonus = self.config['feng_shui_penalties']['corner_placement_bonus']
+                        penalty_score += corner_bonus
+                        print(f"DEBUG: {obj_type} corner bonus - against multiple walls at ({x}, {y})")
+                    
+                    # Special scoring for beds: corner placement is actually worse than single wall
+                    if obj_type == 'bed' and walls_touched >= 2:
+                        penalty_score -= 75.0  # Penalty for bed in corner (too restrictive)
+                        print(f"DEBUG: {obj_type} corner penalty - bed in corner is too restrictive")
+                
+                # Harsh penalty for being too far from walls (floating in middle)
+                elif min_distance_to_wall > 6:
+                    penalty_weight = self.config['feng_shui_penalties']['furniture_floating']
+                    penalty_score -= penalty_weight
+                    print(f"DEBUG: {obj_type} penalty - floating in middle, min wall distance: {min_distance_to_wall}")
+                
+                # Moderate penalty for being somewhat far from walls
+                elif min_distance_to_wall > 3:
+                    penalty_score -= 100.0
+                    print(f"DEBUG: {obj_type} moderate penalty - somewhat far from wall, distance: {min_distance_to_wall}")
+                
+                # Small penalty for being slightly far from walls
+                elif min_distance_to_wall > 1:
+                    penalty_score -= 50.0
+                    print(f"DEBUG: {obj_type} minor penalty - slightly far from wall, distance: {min_distance_to_wall}")
         
         # Penalty 2: Door across the foot of the bed (door should not be at foot of bed)
         if bed_placement and door_placement:
@@ -348,6 +395,62 @@ class FengShuiOptimizer:
         
         return penalty_score
 
+    def _check_door_blocked(self, placements: List[Dict]) -> float:
+        """
+        Check if doors are blocked by furniture and return penalty.
+        """
+        penalty_score = 0.0
+        
+        # Find door and furniture placements
+        door_placements = [p for p in placements if p['type'] == 'door']
+        furniture_placements = [p for p in placements if p['type'] in ['bed', 'desk']]
+        
+        for door_placement in door_placements:
+            door_x, door_y = door_placement['x'], door_placement['y']
+            
+            for furniture_placement in furniture_placements:
+                furniture_x, furniture_y = furniture_placement['x'], furniture_placement['y']
+                furniture_type = furniture_placement['type']
+                furniture_width, furniture_height = get_object_grid_dimensions(furniture_type)
+                
+                # Check if furniture blocks the door
+                # Door is considered blocked if furniture is within 2 units of the door
+                door_blocked = False
+                
+                # Check horizontal blocking (furniture in front of door)
+                if (furniture_x <= door_x + 2 and 
+                    furniture_x + furniture_width >= door_x - 2 and
+                    furniture_y <= door_y + 2 and 
+                    furniture_y + furniture_height >= door_y - 2):
+                    door_blocked = True
+                
+                if door_blocked:
+                    penalty_weight = self.config['feng_shui_penalties']['door_blocked']
+                    penalty_score -= penalty_weight
+                    print(f"DEBUG: Door blocked by {furniture_type} at ({furniture_x}, {furniture_y})")
+        
+        return penalty_score
+
+    def _check_furniture_overlap(self, placements: List[Dict]) -> float:
+        """
+        Check for overlapping furniture and return penalty.
+        """
+        penalty_score = 0.0
+        
+        furniture_placements = [p for p in placements if p['type'] in ['bed', 'desk']]
+        
+        for i, placement1 in enumerate(furniture_placements):
+            for j, placement2 in enumerate(furniture_placements):
+                if i >= j:  # Skip self-comparison and duplicate comparisons
+                    continue
+                
+                if self._objects_overlap(placement1, placement2):
+                    penalty_weight = self.config['feng_shui_penalties']['furniture_overlap']
+                    penalty_score -= penalty_weight
+                    print(f"DEBUG: Overlap detected between {placement1['type']} at ({placement1['x']}, {placement1['y']}) and {placement2['type']} at ({placement2['x']}, {placement2['y']})")
+        
+        return penalty_score
+
     def _calculate_layout_score(self, placements: List[Dict]) -> float:
         """
         Calculate the overall Feng Shui score for a layout.
@@ -365,9 +468,10 @@ class FengShuiOptimizer:
         # Bagua scores
         for placement in placements:
             bagua_score = self._calculate_bagua_score(placement)
+            # Apply small weight based on object importance
             weight = self.config['furniture_preferences'].get(
                 placement['type'], {}).get('weight', 1)
-            total_score += bagua_score * weight
+            total_score += bagua_score * (weight / 10.0)  # Normalize weights
         
         # Command position score
         command_score = self._calculate_command_position_score(placements)
@@ -378,7 +482,7 @@ class FengShuiOptimizer:
         total_score += chi_score
         
         # Bonus for having all required objects
-        total_score += len(placements) * 25.0  # Increased bonus for complete layouts
+        total_score += len(placements) * 10.0  # Reduced bonus for complete layouts
         
         # Bonus for wall placement of boundaries
         for placement in placements:
@@ -386,11 +490,16 @@ class FengShuiOptimizer:
                 x, y = placement['x'], placement['y']
                 if (x == 0 or x == self.grid_width - 1 or 
                     y == 0 or y == self.grid_height - 1):
-                    total_score += 30.0  # Increased from previous values
+                    total_score += 15.0  # Reduced bonus for wall placement
         
         # Apply Feng Shui penalties
         feng_shui_penalties = self._calculate_feng_shui_penalties(placements)
         total_score += feng_shui_penalties
+        
+        # Apply extremely harsh penalties for fundamental violations
+        door_blocked_penalty = self._check_door_blocked(placements)
+        furniture_overlap_penalty = self._check_furniture_overlap(placements)
+        total_score += door_blocked_penalty + furniture_overlap_penalty
         
         return total_score
     
@@ -417,7 +526,7 @@ class FengShuiOptimizer:
                     score -= 10000  # Extremely negative score for out-of-bounds
                     return score
         
-        # Check for overlapping objects (bed and desk)
+        # Check for overlapping objects (bed and desk) - use new harsh penalty
         furniture_placements = [p for p in placements if p['type'] in ['bed', 'desk']]
         
         for i, placement1 in enumerate(furniture_placements):
@@ -428,7 +537,28 @@ class FengShuiOptimizer:
                 # Check if these objects overlap
                 if self._objects_overlap(placement1, placement2):
                     print(f"DEBUG: {placement1['type']} and {placement2['type']} overlap")
-                    score -= 10000  # Extremely negative score for overlap
+                    overlap_penalty = self.config['feng_shui_penalties']['furniture_overlap']
+                    score -= overlap_penalty
+                    return score
+        
+        # Check for blocked doors - use new harsh penalty
+        door_placements = [p for p in placements if p['type'] == 'door']
+        for door_placement in door_placements:
+            door_x, door_y = door_placement['x'], door_placement['y']
+            
+            for furniture_placement in furniture_placements:
+                furniture_x, furniture_y = furniture_placement['x'], furniture_placement['y']
+                furniture_type = furniture_placement['type']
+                furniture_width, furniture_height = get_object_grid_dimensions(furniture_type)
+                
+                # Check if furniture blocks the door
+                if (furniture_x <= door_x + 2 and 
+                    furniture_x + furniture_width >= door_x - 2 and
+                    furniture_y <= door_y + 2 and 
+                    furniture_y + furniture_height >= door_y - 2):
+                    print(f"DEBUG: Door blocked by {furniture_type}")
+                    door_blocked_penalty = self.config['feng_shui_penalties']['door_blocked']
+                    score -= door_blocked_penalty
                     return score
         
         return score
@@ -572,7 +702,6 @@ class FengShuiOptimizer:
         
         for attempt in range(max_attempts):
             mutated_layout = []
-            occupied_positions = set()
             
             # Try to mutate each placement
             for placement in current_layout:
@@ -582,29 +711,21 @@ class FengShuiOptimizer:
                     for mutation_attempt in range(20):
                         mutated_placement = self._mutate_placement(placement)
                         
-                        # Check if this mutation is valid
-                        if (is_position_valid(mutated_placement['x'], mutated_placement['y'], 
-                                            mutated_placement['type'], occupied_positions, 
-                                            self.grid_width, self.grid_height) and
-                            not check_object_collision(mutated_placement['x'], mutated_placement['y'], 
-                                                     mutated_placement['type'], occupied_positions)):
-                            
+                        # Create a temporary layout with this mutation to check validity
+                        temp_layout = mutated_layout + [mutated_placement]
+                        
+                        # Check if this mutation creates a valid layout
+                        if self._is_valid_layout(temp_layout):
                             valid_mutation = mutated_placement
                             break
                     
                     if valid_mutation is not None:
                         mutated_layout.append(valid_mutation)
-                        add_occupied_positions(valid_mutation['x'], valid_mutation['y'], 
-                                             valid_mutation['type'], occupied_positions)
                     else:
                         # Keep original placement if no valid mutation found
                         mutated_layout.append(placement.copy())
-                        add_occupied_positions(placement['x'], placement['y'], 
-                                             placement['type'], occupied_positions)
                 else:
                     mutated_layout.append(placement.copy())
-                    add_occupied_positions(placement['x'], placement['y'], 
-                                         placement['type'], occupied_positions)
             
             # Ensure all objects are present
             placed_types = [p['type'] for p in mutated_layout]
@@ -630,6 +751,7 @@ class FengShuiOptimizer:
         current_score = self._calculate_layout_score(current_layout)
         
         print(f"DEBUG: Initial layout score: {current_score:.2f}")
+        self._print_detailed_score_breakdown(current_layout, current_score)
         
         best_layout = current_layout.copy()
         best_score = current_score
@@ -641,6 +763,11 @@ class FengShuiOptimizer:
         
         no_improvement_count = 0
         max_no_improvement = 50  # Increased patience
+        
+        # Fallback tracking
+        fallback_attempts = 0
+        max_fallback_attempts = 3
+        original_objects = objects_to_place.copy()
         
         for iteration in range(max_iterations):
             # Generate a valid mutated version of the current layout
@@ -670,10 +797,17 @@ class FengShuiOptimizer:
                     best_score = current_score
                     no_improvement_count = 0
                     print(f"DEBUG: New best score: {best_score:.2f}")
+                    self._print_detailed_score_breakdown(best_layout, best_score)
                 else:
                     no_improvement_count += 1
             else:
                 no_improvement_count += 1
+            
+            # Additional safeguard: always check if current is better than best
+            if current_score > best_score:
+                best_layout = current_layout.copy()
+                best_score = current_score
+                print(f"DEBUG: Updated best score to {best_score:.2f} (safeguard)")
             
             # Cool down temperature
             temperature *= cooling_rate
@@ -685,6 +819,41 @@ class FengShuiOptimizer:
             
             if iteration % 20 == 0:
                 print(f"DEBUG: Iteration {iteration}, current score: {current_score:.2f}, best score: {best_score:.2f}, temperature: {temperature:.2f}")
+            
+            # Always keep track of the best layout seen, regardless of acceptance
+            if mutated_score > best_score:
+                best_layout = mutated_layout.copy()
+                best_score = mutated_score
+                print(f"DEBUG: New best score found: {best_score:.2f} (even though not accepted)")
+        
+        # Fallback mechanism: if score is still very poor, try with fewer objects
+        if best_score < -500 and fallback_attempts < max_fallback_attempts:
+            print(f"WARNING: Poor optimization result ({best_score:.2f}), trying fallback {fallback_attempts + 1}/{max_fallback_attempts}")
+            fallback_attempts += 1
+            
+            # Try with fewer objects (remove the most problematic ones)
+            if len(objects_to_place) > 2:
+                # Remove the object that's causing the most problems
+                reduced_objects = objects_to_place[:-1]  # Remove last object
+                print(f"DEBUG: Trying fallback with reduced objects: {reduced_objects}")
+                
+                # Recursive call with fewer objects
+                fallback_layout, fallback_score = self.optimize_layout(reduced_objects)
+                
+                # If fallback is better, use it
+                if fallback_score > best_score:
+                    print(f"DEBUG: Fallback improved score from {best_score:.2f} to {fallback_score:.2f}")
+                    best_layout = fallback_layout
+                    best_score = fallback_score
+                else:
+                    print(f"DEBUG: Fallback did not improve score ({fallback_score:.2f} vs {best_score:.2f})")
+        
+        # Final fallback: if still very poor, generate a simple valid layout
+        if best_score < -1000 and fallback_attempts >= max_fallback_attempts:
+            print("WARNING: All optimization attempts failed, generating simple fallback layout")
+            best_layout = self._generate_simple_fallback_layout(original_objects)
+            best_score = self._calculate_layout_score(best_layout)
+            print(f"DEBUG: Fallback layout score: {best_score:.2f}")
         
         # Final validation and cleanup
         if len(best_layout) != len(objects_to_place):
@@ -707,9 +876,91 @@ class FengShuiOptimizer:
                 print(f"ERROR: {obj_type} still missing from final layout!")
                 best_layout.append({'type': obj_type, 'x': 0, 'y': 0})
         
-        print(f"Final best score: {best_score:.2f}")
-        return best_layout, best_score
-    
+        # Final validation of best layout
+        if not self._is_valid_layout(best_layout):
+            print("ERROR: Best layout is invalid! Checking for overlaps...")
+            furniture_placements = [p for p in best_layout if p['type'] in ['bed', 'desk']]
+            for i, placement1 in enumerate(furniture_placements):
+                for j, placement2 in enumerate(furniture_placements):
+                    if i >= j:
+                        continue
+                    if self._objects_overlap(placement1, placement2):
+                        print(f"ERROR: Overlap detected between {placement1['type']} at ({placement1['x']}, {placement1['y']}) and {placement2['type']} at ({placement2['x']}, {placement2['y']})")
+                        # Try to fix by moving one object
+                        placement2['x'] = max(0, placement2['x'] + 10)
+                        placement2['y'] = max(0, placement2['y'] + 10)
+                        print(f"Fixed by moving {placement2['type']} to ({placement2['x']}, {placement2['y']})")
+        
+        # Recalculate final score to ensure accuracy
+        final_score = self._calculate_layout_score(best_layout)
+        print(f"Final best score: {final_score:.2f} (was {best_score:.2f})")
+        
+        # Print final detailed breakdown
+        self._print_detailed_score_breakdown(best_layout, final_score)
+        
+        return best_layout, final_score
+
+    def _generate_simple_fallback_layout(self, objects_to_place: List[str]) -> List[Dict]:
+        """
+        Generate a simple fallback layout when optimization fails.
+        Places objects in a basic pattern that should be valid.
+        """
+        print("DEBUG: Generating simple fallback layout")
+        fallback_layout = []
+        
+        # Simple placement strategy: place objects in corners and edges
+        positions = [
+            (0, 0),           # Top-left corner
+            (self.grid_width - 1, 0),  # Top-right corner  
+            (0, self.grid_height - 1), # Bottom-left corner
+            (self.grid_width - 1, self.grid_height - 1), # Bottom-right corner
+        ]
+        
+        # For each object, try to place it in a valid position
+        for i, obj_type in enumerate(objects_to_place):
+            placed = False
+            
+            # Try positions in order
+            for pos_idx, (x, y) in enumerate(positions):
+                if pos_idx >= len(objects_to_place):
+                    break
+                    
+                # Check if this position is valid for this object
+                if is_position_valid(x, y, obj_type, set(), self.grid_width, self.grid_height):
+                    fallback_layout.append({
+                        'type': obj_type,
+                        'x': x,
+                        'y': y
+                    })
+                    placed = True
+                    print(f"DEBUG: Placed {obj_type} at ({x}, {y}) in fallback layout")
+                    break
+            
+            # If we couldn't place it in a corner, try a simple position
+            if not placed:
+                # Try center positions
+                center_x = self.grid_width // 2
+                center_y = self.grid_height // 2
+                
+                if is_position_valid(center_x, center_y, obj_type, set(), self.grid_width, self.grid_height):
+                    fallback_layout.append({
+                        'type': obj_type,
+                        'x': center_x,
+                        'y': center_y
+                    })
+                    print(f"DEBUG: Placed {obj_type} at center ({center_x}, {center_y}) in fallback layout")
+                else:
+                    # Last resort: place at origin
+                    fallback_layout.append({
+                        'type': obj_type,
+                        'x': 0,
+                        'y': 0
+                    })
+                    print(f"DEBUG: Placed {obj_type} at origin (0, 0) in fallback layout")
+        
+        print(f"DEBUG: Generated fallback layout with {len(fallback_layout)} objects")
+        return fallback_layout
+
     def get_layout_analysis(self, placements: List[Dict]) -> Dict:
         """
         Get detailed analysis of a layout's Feng Shui properties.
@@ -754,6 +1005,90 @@ class FengShuiOptimizer:
         
         return analysis
 
+    def _print_detailed_score_breakdown(self, placements: List[Dict], score: float):
+        """
+        Print detailed breakdown of all factors contributing to the score.
+        """
+        print(f"\n{'='*60}")
+        print(f"DETAILED SCORE BREAKDOWN")
+        print(f"{'='*60}")
+        print(f"Final Score: {score:.2f}")
+        print(f"Number of objects: {len(placements)}")
+        print(f"Objects: {[p['type'] for p in placements]}")
+        print(f"\n{'-'*60}")
+        
+        # 1. Bagua Scores
+        print(f"1. BAGUA SCORES:")
+        total_bagua = 0.0
+        for placement in placements:
+            bagua_score = self._calculate_bagua_score(placement)
+            weight = self.config['furniture_preferences'].get(
+                placement['type'], {}).get('weight', 1)
+            normalized_weight = weight / 10.0
+            final_bagua = bagua_score * normalized_weight
+            total_bagua += final_bagua
+            
+            # Get bagua zone
+            x, y = placement['x'], placement['y']
+            zone = self._get_bagua_zone(x, y)
+            
+            print(f"   {placement['type']} at ({x}, {y}) - Zone: {zone}")
+            print(f"     Raw bagua score: {bagua_score:.2f}")
+            print(f"     Weight: {weight}, Normalized: {normalized_weight:.2f}")
+            print(f"     Final: {final_bagua:.2f}")
+        print(f"   Total Bagua Score: {total_bagua:.2f}")
+        
+        # 2. Command Position Score
+        command_score = self._calculate_command_position_score(placements)
+        print(f"\n2. COMMAND POSITION SCORE: {command_score:.2f}")
+        
+        # 3. Chi Flow Score
+        chi_score = self._calculate_chi_flow_score(placements)
+        print(f"\n3. CHI FLOW SCORE: {chi_score:.2f}")
+        
+        # 4. Complete Layout Bonus
+        layout_bonus = len(placements) * 10.0
+        print(f"\n4. COMPLETE LAYOUT BONUS: {layout_bonus:.2f}")
+        print(f"   ({len(placements)} objects × 10.0 points each)")
+        
+        # 5. Wall Placement Bonuses
+        print(f"\n5. WALL PLACEMENT BONUSES:")
+        wall_bonus_total = 0.0
+        for placement in placements:
+            if placement['type'] in ['door', 'window']:
+                x, y = placement['x'], placement['y']
+                if (x == 0 or x == self.grid_width - 1 or 
+                    y == 0 or y == self.grid_height - 1):
+                    wall_bonus_total += 15.0
+                    print(f"   {placement['type']} at ({x}, {y}) - Wall bonus: +15.0")
+        print(f"   Total Wall Bonus: {wall_bonus_total:.2f}")
+        
+        # 6. Feng Shui Penalties
+        feng_shui_penalties = self._calculate_feng_shui_penalties(placements)
+        print(f"\n6. FENG SHUI PENALTIES: {feng_shui_penalties:.2f}")
+        
+        # 7. Door Blocked Penalties
+        door_blocked_penalty = self._check_door_blocked(placements)
+        print(f"\n7. DOOR BLOCKED PENALTIES: {door_blocked_penalty:.2f}")
+        
+        # 8. Furniture Overlap Penalties
+        furniture_overlap_penalty = self._check_furniture_overlap(placements)
+        print(f"\n8. FURNITURE OVERLAP PENALTIES: {furniture_overlap_penalty:.2f}")
+        
+        # 9. Summary
+        print(f"\n{'-'*60}")
+        print(f"SCORE SUMMARY:")
+        print(f"  Bagua Scores: {total_bagua:.2f}")
+        print(f"  Command Position: {command_score:.2f}")
+        print(f"  Chi Flow: {chi_score:.2f}")
+        print(f"  Layout Bonus: {layout_bonus:.2f}")
+        print(f"  Wall Bonuses: {wall_bonus_total:.2f}")
+        print(f"  Feng Shui Penalties: {feng_shui_penalties:.2f}")
+        print(f"  Door Blocked: {door_blocked_penalty:.2f}")
+        print(f"  Furniture Overlap: {furniture_overlap_penalty:.2f}")
+        print(f"  {'='*20}")
+        print(f"  TOTAL: {score:.2f}")
+        print(f"{'='*60}\n")
 
 # Example usage and testing
 if __name__ == "__main__":
