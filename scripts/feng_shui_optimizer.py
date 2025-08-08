@@ -78,6 +78,16 @@ class FengShuiOptimizer:
                 'command_position_weight': 9  # Weight for command position
             },
             
+            # Feng Shui penalty weights
+            'feng_shui_penalties': {
+                'bed_away_from_wall': 150.0,      # Penalty for bed not against wall
+                'door_at_bed_foot': 200.0,        # Penalty for door at foot of bed
+                'window_next_to_door': 100.0,     # Penalty for window too close to door
+                'same_wall_door_window': 150.0,   # Extra penalty for door/window on same wall
+                'bed_under_window': 120.0,        # Penalty for bed under window
+                'door_facing_bed': 180.0          # Penalty for door directly facing bed
+            },
+            
             # Algorithm parameters
             'algorithm': {
                 'max_iterations': 1000,
@@ -219,6 +229,125 @@ class FengShuiOptimizer:
         
         return total_score
 
+    def _calculate_feng_shui_penalties(self, placements: List[Dict]) -> float:
+        """
+        Calculate penalties for specific Feng Shui violations.
+        """
+        penalty_score = 0.0
+        
+        # Find bed, door, and window placements
+        bed_placement = None
+        door_placement = None
+        window_placement = None
+        
+        for placement in placements:
+            if placement['type'] == 'bed':
+                bed_placement = placement
+            elif placement['type'] == 'door':
+                door_placement = placement
+            elif placement['type'] == 'window':
+                window_placement = placement
+        
+        # Penalty 1: Bed away from walls (bed should be against a wall)
+        if bed_placement:
+            x, y = bed_placement['x'], bed_placement['y']
+            bed_width, bed_height = get_object_grid_dimensions('bed')
+            
+            # Check if bed is against any wall
+            against_wall = (x == 0 or x + bed_width >= self.grid_width - 1 or 
+                           y == 0 or y + bed_height >= self.grid_height - 1)
+            
+            if not against_wall:
+                penalty_weight = self.config['feng_shui_penalties']['bed_away_from_wall']
+                penalty_score -= penalty_weight
+                print(f"DEBUG: Bed penalty - not against wall at ({x}, {y})")
+        
+        # Penalty 2: Door across the foot of the bed (door should not be at foot of bed)
+        if bed_placement and door_placement:
+            bed_x, bed_y = bed_placement['x'], bed_placement['y']
+            door_x, door_y = door_placement['x'], door_placement['y']
+            bed_width, bed_height = get_object_grid_dimensions('bed')
+            
+            # Calculate bed foot position (assuming bed head is at the top)
+            bed_foot_x = bed_x + bed_width // 2  # Center of bed foot
+            bed_foot_y = bed_y + bed_height  # Bottom of bed
+            
+            # Check if door is near the foot of the bed
+            distance_to_foot = math.sqrt((door_x - bed_foot_x)**2 + (door_y - bed_foot_y)**2)
+            
+            if distance_to_foot < 8:  # Door too close to bed foot
+                penalty_weight = self.config['feng_shui_penalties']['door_at_bed_foot']
+                penalty_score -= penalty_weight
+                print(f"DEBUG: Door penalty - too close to bed foot, distance: {distance_to_foot:.2f}")
+        
+        # Penalty 3: Window directly next to door (should have some separation)
+        if door_placement and window_placement:
+            door_x, door_y = door_placement['x'], door_placement['y']
+            window_x, window_y = window_placement['x'], window_placement['y']
+            
+            # Calculate distance between door and window
+            door_window_distance = math.sqrt((door_x - window_x)**2 + (door_y - window_y)**2)
+            
+            if door_window_distance < 6:  # Window too close to door
+                penalty_weight = self.config['feng_shui_penalties']['window_next_to_door']
+                penalty_score -= penalty_weight
+                print(f"DEBUG: Window penalty - too close to door, distance: {door_window_distance:.2f}")
+            
+            # Additional penalty if door and window are on the same wall
+            door_on_wall = (door_x == 0 or door_x == self.grid_width - 1 or 
+                           door_y == 0 or door_y == self.grid_height - 1)
+            window_on_wall = (window_x == 0 or window_x == self.grid_width - 1 or 
+                             window_y == 0 or window_y == self.grid_height - 1)
+            
+            if door_on_wall and window_on_wall:
+                # Check if they're on the same wall side
+                same_wall = ((door_x == 0 and window_x == 0) or 
+                            (door_x == self.grid_width - 1 and window_x == self.grid_width - 1) or
+                            (door_y == 0 and window_y == 0) or 
+                            (door_y == self.grid_height - 1 and window_y == self.grid_height - 1))
+                
+                if same_wall and door_window_distance < 12:
+                    penalty_weight = self.config['feng_shui_penalties']['same_wall_door_window']
+                    penalty_score -= penalty_weight
+                    print(f"DEBUG: Same wall penalty - door and window on same wall, distance: {door_window_distance:.2f}")
+        
+        # Penalty 4: Bed directly under window (bed should not be under window)
+        if bed_placement and window_placement:
+            bed_x, bed_y = bed_placement['x'], bed_placement['y']
+            window_x, window_y = window_placement['x'], window_placement['y']
+            bed_width, bed_height = get_object_grid_dimensions('bed')
+            
+            # Check if bed is positioned under or very close to window
+            bed_center_x = bed_x + bed_width // 2
+            bed_center_y = bed_y + bed_height // 2
+            
+            distance_to_window = math.sqrt((bed_center_x - window_x)**2 + (bed_center_y - window_y)**2)
+            
+            if distance_to_window < 10:  # Bed too close to window
+                penalty_weight = self.config['feng_shui_penalties']['bed_under_window']
+                penalty_score -= penalty_weight
+                print(f"DEBUG: Bed under window penalty - distance: {distance_to_window:.2f}")
+        
+        # Penalty 5: Door facing bed directly (door should not directly face bed)
+        if bed_placement and door_placement:
+            bed_x, bed_y = bed_placement['x'], bed_placement['y']
+            door_x, door_y = door_placement['x'], door_placement['y']
+            bed_width, bed_height = get_object_grid_dimensions('bed')
+            
+            # Calculate bed center
+            bed_center_x = bed_x + bed_width // 2
+            bed_center_y = bed_y + bed_height // 2
+            
+            # Check if door directly faces bed center
+            door_to_bed_distance = math.sqrt((door_x - bed_center_x)**2 + (door_y - bed_center_y)**2)
+            
+            if door_to_bed_distance < 15:  # Door too close to bed center
+                penalty_weight = self.config['feng_shui_penalties']['door_facing_bed']
+                penalty_score -= penalty_weight
+                print(f"DEBUG: Door facing bed penalty - distance: {door_to_bed_distance:.2f}")
+        
+        return penalty_score
+
     def _calculate_layout_score(self, placements: List[Dict]) -> float:
         """
         Calculate the overall Feng Shui score for a layout.
@@ -258,6 +387,10 @@ class FengShuiOptimizer:
                 if (x == 0 or x == self.grid_width - 1 or 
                     y == 0 or y == self.grid_height - 1):
                     total_score += 30.0  # Increased from previous values
+        
+        # Apply Feng Shui penalties
+        feng_shui_penalties = self._calculate_feng_shui_penalties(placements)
+        total_score += feng_shui_penalties
         
         return total_score
     
@@ -588,6 +721,7 @@ class FengShuiOptimizer:
                 'command_position_score': self._calculate_command_position_score(placements),
                 'chi_flow_score': self._calculate_chi_flow_score(placements)
             },
+            'feng_shui_penalties': self._calculate_feng_shui_penalties(placements),
             'recommendations': []
         }
         
@@ -610,6 +744,13 @@ class FengShuiOptimizer:
         
         if analysis['energy_flow']['command_position_score'] < 10:
             analysis['recommendations'].append("Ensure bed and desk face the door for command position")
+        
+        # Feng Shui specific recommendations
+        if analysis['feng_shui_penalties'] < -100:
+            analysis['recommendations'].append("Address Feng Shui violations for better energy flow")
+        
+        if analysis['feng_shui_penalties'] < -200:
+            analysis['recommendations'].append("Major Feng Shui issues detected - consider significant layout changes")
         
         return analysis
 
@@ -651,6 +792,7 @@ if __name__ == "__main__":
     print(f"  Total Score: {analysis['total_score']:.2f}")
     print(f"  Command Position Score: {analysis['energy_flow']['command_position_score']:.2f}")
     print(f"  Chi Flow Score: {analysis['energy_flow']['chi_flow_score']:.2f}")
+    print(f"  Feng Shui Penalties: {analysis['feng_shui_penalties']:.2f}")
     
     if analysis['recommendations']:
         print(f"\nRecommendations:")
