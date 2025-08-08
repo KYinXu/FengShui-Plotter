@@ -10,6 +10,7 @@ import '../widgets/rotation_control_widget.dart';
 import '../services/auto_placer_service.dart';
 import '../widgets/objects/object_item.dart';
 import '../constants/object_config.dart';
+import '../widgets/feng_shui_score_bar.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -31,6 +32,7 @@ class _HomeScreenState extends State<HomeScreen> {
 
   // Boundary mode: 'none', 'door', 'window'
   String _boundaryMode = 'none';
+  double? _currentFengShuiScore;
 
   void _onGridCreated(Grid grid) {
     setState(() {
@@ -38,6 +40,7 @@ class _HomeScreenState extends State<HomeScreen> {
       _placedObjects = [];
       _boundaries = [];
       _gridWidgetKey = UniqueKey(); // Force GridWidget to rebuild
+      _currentFengShuiScore = null;
     });
   }
 
@@ -57,9 +60,77 @@ class _HomeScreenState extends State<HomeScreen> {
       final minY = poly.map((p) => p.dy).reduce((a, b) => a < b ? a : b);
       final maxX = poly.map((p) => p.dx).reduce((a, b) => a > b ? a : b);
       final maxY = poly.map((p) => p.dy).reduce((a, b) => a > b ? a : b);
+      
+      // Calculate Feng Shui score for current layout
+      _calculateCurrentFengShuiScore();
     });
   }
 
+  void _calculateCurrentFengShuiScore() {
+    // Simple Feng Shui score calculation based on current layout
+    if (_currentGrid == null || (_placedObjects.isEmpty && _boundaries.isEmpty)) {
+      setState(() {
+        _currentFengShuiScore = null;
+      });
+      return;
+    }
+
+    double score = 0.0;
+    
+    // Base score for having objects
+    score += _placedObjects.length * 10.0;
+    score += _boundaries.length * 5.0;
+    
+    // Bonus for balanced layout (objects spread out)
+    if (_placedObjects.length > 1) {
+      // Calculate distance between objects
+      double totalDistance = 0.0;
+      int comparisons = 0;
+      
+      for (int i = 0; i < _placedObjects.length; i++) {
+        for (int j = i + 1; j < _placedObjects.length; j++) {
+          final obj1 = _placedObjects[i];
+          final obj2 = _placedObjects[j];
+          final distance = ((obj1.col - obj2.col).abs() + (obj1.row - obj2.row).abs()).toDouble();
+          totalDistance += distance;
+          comparisons++;
+        }
+      }
+      
+      if (comparisons > 0) {
+        final avgDistance = totalDistance / comparisons;
+        score += avgDistance * 2.0; // Bonus for spread out objects
+      }
+    }
+    
+    // Bonus for boundaries on walls
+    for (final boundary in _boundaries) {
+      final gridWidth = _currentGrid!.widthInches.floor();
+      final gridHeight = _currentGrid!.lengthInches.floor();
+      
+      if (boundary.col == 0 || boundary.col == gridWidth - 1 || 
+          boundary.row == 0 || boundary.row == gridHeight - 1) {
+        score += 15.0; // Bonus for wall placement
+      }
+    }
+    
+    // Penalty for objects too close to boundaries
+    for (final obj in _placedObjects) {
+      for (final boundary in _boundaries) {
+        final distance = ((obj.col - boundary.col).abs() + (obj.row - boundary.row).abs()).toDouble();
+        if (distance < 3) {
+          score -= 5.0; // Penalty for being too close to boundaries
+        }
+      }
+    }
+    
+    // Normalize score to 0-100 range
+    score = score.clamp(0.0, 100.0);
+    
+    setState(() {
+      _currentFengShuiScore = score;
+    });
+  }
 
 
   void _handleAddBoundary(GridBoundary boundary) {
@@ -67,6 +138,7 @@ class _HomeScreenState extends State<HomeScreen> {
       if (!_boundaries.contains(boundary)) {
         _boundaries.add(boundary);
         _gridWidgetKey = UniqueKey(); // Force GridWidget to rebuild
+        _calculateCurrentFengShuiScore();
       }
     });
   }
@@ -75,6 +147,7 @@ class _HomeScreenState extends State<HomeScreen> {
     setState(() {
       _boundaries.remove(boundary);
       _gridWidgetKey = UniqueKey(); // Force GridWidget to rebuild
+      _calculateCurrentFengShuiScore();
     });
   }
 
@@ -101,140 +174,298 @@ class _HomeScreenState extends State<HomeScreen> {
                 selectedBoundaryType: _selectedBoundaryType,
                 onBoundaryTypeSelected: _handleBoundaryTypeSelected,
               ),
+              // Feng Shui Score Bar
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: AppConstants.defaultPadding),
+                child: FengShuiScoreBar(
+                  score: _currentFengShuiScore,
+                  maxScore: 100.0,
+                ),
+              ),
+              const SizedBox(height: 8),
               Padding(
                 padding: const EdgeInsets.symmetric(vertical: 8.0),
                 child: Row(
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
-                    ElevatedButton.icon(
-                      icon: const Icon(Icons.auto_fix_high),
-                      label: const Text('Auto Place Objects'),
-                      onPressed: () async {
-                        if (_currentGrid == null) return;
-                        setState(() => _isAutoPlacing = true);
-                        try {
-                          // Prepare grid data for the Python service (use actual inch values)
-                          final gridData = {
-                            'grid_width': _currentGrid!.widthInches.floor(),
-                            'grid_height': _currentGrid!.lengthInches.floor(),
-                          };
-                          final response = await AutoPlacerService.getPlacements(gridData);
-                          
-                          setState(() {
-                            // Clear the grid first
-                            _placedObjects = [];
-                            _boundaries = [];
-                            
-                            // Place new objects and boundaries
-                            final placements = response['placements'] as List<dynamic>;
-                            
-                            for (final p in placements) {
-                              final placement = p as Map<String, dynamic>;
-                              final type = placement['type'] ?? 'Unknown';
-                              final x = (placement['x'] ?? 0) as int;
-                              final y = (placement['y'] ?? 0) as int;
-                              
-                              if (ObjectConfig.isBoundary(type)) {
-                                // Place as boundary with proper span and side calculation
-                                final boundaryConfig = BoundaryRegistry.getConfig(type);
-                                final span = boundaryConfig?.length.round() ?? 30; // Use actual inch value
-                                
-                                // Determine side based on position
-                                String side;
-                                if (x == 0) side = 'left';
-                                else if (x == _currentGrid!.widthInches.floor() - 1) side = 'right';
-                                else if (y == 0) side = 'top';
-                                else if (y == _currentGrid!.lengthInches.floor() - 1) side = 'bottom';
-                                else side = 'right'; // Fallback
-                                
-                                final boundary = GridBoundary(
-                                  type: type,
-                                  row: y,
-                                  col: x,
-                                  side: side,
-                                  icon: ObjectConfig.getIcon(type),
-                                  span: span,
-                                );
-                                _boundaries.add(boundary);
-                              } else {
-                                // Place as regular object
-                                final obj = GridObject(
-                                  type: type,
-                                  row: y,
-                                  col: x,
-                                  icon: ObjectConfig.getIcon(type),
-                                );
-                                _placedObjects.add(obj);
-                              }
-                            }
-                            
-                            // Print all placed objects and boundaries
-                            print('=== AUTO PLACEMENT COMPLETED ===');
-                            print('Grid Dimensions: ${_currentGrid!.widthInches.floor()}x${_currentGrid!.lengthInches.floor()}');
-                            print('');
-                            print('PLACED OBJECTS:');
-                            for (int i = 0; i < _placedObjects.length; i++) {
-                              final obj = _placedObjects[i];
-                              print('${i + 1}. ${obj.type.toUpperCase()}: Position (${obj.col}, ${obj.row})');
-                            }
-                            print('');
-                            print('PLACED BOUNDARIES:');
-                            for (int i = 0; i < _boundaries.length; i++) {
-                              final boundary = _boundaries[i];
-                              print('${i + 1}. ${boundary.type.toUpperCase()}: Position (${boundary.col}, ${boundary.row}) - Side: ${boundary.side}');
-                            }
-                            print('=== TOTAL OBJECTS: ${_placedObjects.length} | TOTAL BOUNDARIES: ${_boundaries.length} ===');
-                          });
-                        } catch (e) {
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            SnackBar(content: Text('Auto placement failed: $e')),
-                          );
-                        } finally {
-                          setState(() => _isAutoPlacing = false);
-                        }
-                      },
-                    ),
-                    const SizedBox(width: 12),
-                    ElevatedButton.icon(
-                      icon: const Icon(Icons.clear),
-                      label: const Text('Clear Grid'),
-                      onPressed: () {
-                        setState(() {
-                          _placedObjects = [];
-                          _boundaries = [];
-                          _gridWidgetKey = UniqueKey(); // Force GridWidget to rebuild
-                        });
-                      },
-                    ),
-                    const SizedBox(width: 12),
-                    ToggleButtons(
-                      isSelected: [
-                        _mode == 'object',
-                        _mode == 'border',
-                      ],
-                      onPressed: (int index) {
-                        setState(() {
-                          _mode = index == 0 ? 'object' : 'border';
-                        });
-                      },
-                      children: const [
-                        Padding(
-                          padding: EdgeInsets.symmetric(horizontal: 16.0),
-                          child: Row(
-                            children: [
-                              Icon(Icons.category),
-                              SizedBox(width: 6),
-                              Text('Object'),
-                            ],
-                          ),
+                    Wrap(
+                      spacing: 8.0,
+                      runSpacing: 8.0,
+                      alignment: WrapAlignment.center,
+                      children: [
+                        ElevatedButton.icon(
+                          icon: const Icon(Icons.auto_awesome),
+                          label: const Text('Auto Place'),
+                          onPressed: _isAutoPlacing
+                              ? null
+                              : () async {
+                                  setState(() => _isAutoPlacing = true);
+                                  try {
+                                    // Prepare grid data for the Python service (use actual inch values)
+                                    final gridData = {
+                                      'grid_width': _currentGrid!.widthInches.floor(),
+                                      'grid_height': _currentGrid!.lengthInches.floor(),
+                                    };
+                                    final response = await AutoPlacerService.getPlacements(gridData);
+                                    
+                                    setState(() {
+                                      // Clear the grid first
+                                      _placedObjects = [];
+                                      _boundaries = [];
+                                      
+                                      // Place new objects and boundaries
+                                      final placements = response['placements'] as List<dynamic>;
+                                      
+                                      for (final p in placements) {
+                                        final placement = p as Map<String, dynamic>;
+                                        final type = placement['type'] ?? 'Unknown';
+                                        final x = (placement['x'] ?? 0) as int;
+                                        final y = (placement['y'] ?? 0) as int;
+                                        
+                                        if (ObjectConfig.isBoundary(type)) {
+                                          // Place as boundary with proper span and side calculation
+                                          final boundaryConfig = BoundaryRegistry.getConfig(type);
+                                          final span = boundaryConfig?.length.round() ?? 30; // Use actual inch value
+                                          
+                                          // Determine side based on position
+                                          String side;
+                                          if (x == 0) side = 'left';
+                                          else if (x == _currentGrid!.widthInches.floor() - 1) side = 'right';
+                                          else if (y == 0) side = 'top';
+                                          else if (y == _currentGrid!.lengthInches.floor() - 1) side = 'bottom';
+                                          else side = 'right'; // Fallback
+                                          
+                                          final boundary = GridBoundary(
+                                            type: type,
+                                            row: y,
+                                            col: x,
+                                            side: side,
+                                            icon: ObjectConfig.getIcon(type),
+                                            span: span,
+                                          );
+                                          _boundaries.add(boundary);
+                                        } else {
+                                          // Place as regular object
+                                          final obj = GridObject(
+                                            type: type,
+                                            row: y,
+                                            col: x,
+                                            icon: ObjectConfig.getIcon(type),
+                                          );
+                                          _placedObjects.add(obj);
+                                        }
+                                      }
+                                      
+                                      // Print all placed objects and boundaries
+                                      print('=== AUTO PLACEMENT COMPLETED ===');
+                                      print('Grid Dimensions: ${_currentGrid!.widthInches.floor()}x${_currentGrid!.lengthInches.floor()}');
+                                      print('');
+                                      print('PLACED OBJECTS:');
+                                      for (int i = 0; i < _placedObjects.length; i++) {
+                                        final obj = _placedObjects[i];
+                                        print('${i + 1}. ${obj.type.toUpperCase()}: Position (${obj.col}, ${obj.row})');
+                                      }
+                                      print('');
+                                      print('PLACED BOUNDARIES:');
+                                      for (int i = 0; i < _boundaries.length; i++) {
+                                        final boundary = _boundaries[i];
+                                        print('${i + 1}. ${boundary.type.toUpperCase()}: Position (${boundary.col}, ${boundary.row}) - Side: ${boundary.side}');
+                                      }
+                                      print('=== TOTAL OBJECTS: ${_placedObjects.length} | TOTAL BOUNDARIES: ${_boundaries.length} ===');
+                                    });
+                                    
+                                    // Calculate Feng Shui score for the new layout
+                                    _calculateCurrentFengShuiScore();
+                                  } catch (e) {
+                                    ScaffoldMessenger.of(context).showSnackBar(
+                                      SnackBar(content: Text('Auto placement failed: $e')),
+                                    );
+                                  } finally {
+                                    setState(() => _isAutoPlacing = false);
+                                  }
+                                },
                         ),
-                        Padding(
-                          padding: EdgeInsets.symmetric(horizontal: 16.0),
-                          child: Row(
-                            children: [
-                              Icon(Icons.border_outer),
-                              SizedBox(width: 6),
-                              Text('Border'),
+                        ElevatedButton.icon(
+                          icon: const Icon(Icons.psychology),
+                          label: const Text('Feng Shui'),
+                          onPressed: _isAutoPlacing
+                              ? null
+                              : () async {
+                                  setState(() => _isAutoPlacing = true);
+                                  try {
+                                    // Prepare grid data for the Feng Shui optimizer
+                                    final gridData = {
+                                      'grid_width': _currentGrid!.widthInches.floor(),
+                                      'grid_height': _currentGrid!.lengthInches.floor(),
+                                    };
+                                    
+                                    // Call Feng Shui optimizer
+                                    final response = await AutoPlacerService.getFengShuiOptimizedPlacements(
+                                      gridData,
+                                      objects: ['bed', 'desk', 'door', 'window'],
+                                    );
+                                    
+                                    setState(() {
+                                      // Clear the grid first
+                                      _placedObjects = [];
+                                      _boundaries = [];
+                                      
+                                      // Place optimized objects and boundaries
+                                      final placements = response['placements'] as List<dynamic>;
+                                      
+                                      for (final p in placements) {
+                                        final placement = p as Map<String, dynamic>;
+                                        final type = placement['type'] ?? 'Unknown';
+                                        final x = (placement['x'] ?? 0) as int;
+                                        final y = (placement['y'] ?? 0) as int;
+                                        
+                                        if (ObjectConfig.isBoundary(type)) {
+                                          // Place as boundary with proper span and side calculation
+                                          final boundaryConfig = BoundaryRegistry.getConfig(type);
+                                          final span = boundaryConfig?.length.round() ?? 30;
+                                          
+                                          // Determine side based on position
+                                          String side;
+                                          if (x == 0) side = 'left';
+                                          else if (x == _currentGrid!.widthInches.floor() - 1) side = 'right';
+                                          else if (y == 0) side = 'top';
+                                          else if (y == _currentGrid!.lengthInches.floor() - 1) side = 'bottom';
+                                          else side = 'right';
+                                          
+                                          final boundary = GridBoundary(
+                                            type: type,
+                                            row: y,
+                                            col: x,
+                                            side: side,
+                                            icon: ObjectConfig.getIcon(type),
+                                            span: span,
+                                          );
+                                          _boundaries.add(boundary);
+                                        } else {
+                                          // Place as regular object
+                                          final obj = GridObject(
+                                            type: type,
+                                            row: y,
+                                            col: x,
+                                            icon: ObjectConfig.getIcon(type),
+                                          );
+                                          _placedObjects.add(obj);
+                                        }
+                                      }
+                                      
+                                      // Print Feng Shui analysis
+                                      final fengShuiScore = response['feng_shui_score'] as double?;
+                                      final analysis = response['analysis'] as Map<String, dynamic>?;
+                                      
+                                      print('=== FENG SHUI OPTIMIZATION COMPLETED ===');
+                                      print('Grid Dimensions: ${_currentGrid!.widthInches.floor()}x${_currentGrid!.lengthInches.floor()}');
+                                      print('Feng Shui Score: ${fengShuiScore?.toStringAsFixed(2) ?? 'N/A'}');
+                                      
+                                      if (analysis != null) {
+                                        print('');
+                                        print('FENG SHUI ANALYSIS:');
+                                        print('  Total Score: ${analysis['total_score']?.toStringAsFixed(2) ?? 'N/A'}');
+                                        print('  Command Position Score: ${analysis['energy_flow']?['command_position_score']?.toStringAsFixed(2) ?? 'N/A'}');
+                                        print('  Chi Flow Score: ${analysis['energy_flow']?['chi_flow_score']?.toStringAsFixed(2) ?? 'N/A'}');
+                                        
+                                        final recommendations = analysis['recommendations'] as List<dynamic>?;
+                                        if (recommendations != null && recommendations.isNotEmpty) {
+                                          print('');
+                                          print('RECOMMENDATIONS:');
+                                          for (final rec in recommendations) {
+                                            print('  - $rec');
+                                          }
+                                        }
+                                      }
+                                      
+                                      print('');
+                                      print('OPTIMIZED PLACEMENTS:');
+                                      for (int i = 0; i < _placedObjects.length; i++) {
+                                        final obj = _placedObjects[i];
+                                        print('${i + 1}. ${obj.type.toUpperCase()}: Position (${obj.col}, ${obj.row})');
+                                      }
+                                      for (int i = 0; i < _boundaries.length; i++) {
+                                        final boundary = _boundaries[i];
+                                        print('${i + 1}. ${boundary.type.toUpperCase()}: Position (${boundary.col}, ${boundary.row}) - Side: ${boundary.side}');
+                                      }
+                                      print('=== TOTAL OBJECTS: ${_placedObjects.length} | TOTAL BOUNDARIES: ${_boundaries.length} ===');
+                                    });
+                                    
+                                    // Calculate Feng Shui score for the optimized layout
+                                    _calculateCurrentFengShuiScore();
+                                    
+                                    // Show success message with Feng Shui score
+                                    final fengShuiScore = response['feng_shui_score'] as double?;
+                                    if (fengShuiScore != null) {
+                                      ScaffoldMessenger.of(context).showSnackBar(
+                                        SnackBar(
+                                          content: Text('Feng Shui optimization completed! Score: ${fengShuiScore.toStringAsFixed(2)}'),
+                                          backgroundColor: Colors.green,
+                                        ),
+                                      );
+                                    }
+                                  } catch (e) {
+                                    ScaffoldMessenger.of(context).showSnackBar(
+                                      SnackBar(
+                                        content: Text('Feng Shui optimization failed: $e'),
+                                        backgroundColor: Colors.red,
+                                      ),
+                                    );
+                                  } finally {
+                                    setState(() => _isAutoPlacing = false);
+                                  }
+                                },
+                        ),
+                        ElevatedButton.icon(
+                          icon: const Icon(Icons.clear),
+                          label: const Text('Clear Grid'),
+                          onPressed: () {
+                            setState(() {
+                              _placedObjects = [];
+                              _boundaries = [];
+                              _currentFengShuiScore = null;
+                              _gridWidgetKey = UniqueKey(); // Force GridWidget to rebuild
+                            });
+                          },
+                        ),
+                        Container(
+                          decoration: BoxDecoration(
+                            border: Border.all(color: Colors.grey),
+                            borderRadius: BorderRadius.circular(4),
+                          ),
+                          child: ToggleButtons(
+                            isSelected: [
+                              _mode == 'object',
+                              _mode == 'border',
+                            ],
+                            onPressed: (int index) {
+                              setState(() {
+                                _mode = index == 0 ? 'object' : 'border';
+                              });
+                            },
+                            children: const [
+                              Padding(
+                                padding: EdgeInsets.symmetric(horizontal: 12.0),
+                                child: Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    Icon(Icons.category, size: 16),
+                                    SizedBox(width: 4),
+                                    Text('Object', style: TextStyle(fontSize: 12)),
+                                  ],
+                                ),
+                              ),
+                              Padding(
+                                padding: EdgeInsets.symmetric(horizontal: 12.0),
+                                child: Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    Icon(Icons.border_outer, size: 16),
+                                    SizedBox(width: 4),
+                                    Text('Border', style: TextStyle(fontSize: 12)),
+                                  ],
+                                ),
+                              ),
                             ],
                           ),
                         ),
@@ -243,11 +474,6 @@ class _HomeScreenState extends State<HomeScreen> {
                   ],
                 ),
               ),
-              if (_isAutoPlacing)
-                const Padding(
-                  padding: EdgeInsets.symmetric(vertical: 8.0),
-                  child: CircularProgressIndicator(),
-                ),
               Expanded(
                 child: Padding(
                   padding: const EdgeInsets.fromLTRB(
@@ -256,20 +482,55 @@ class _HomeScreenState extends State<HomeScreen> {
                     AppConstants.defaultPadding,
                     AppConstants.defaultPadding,
                   ),
-                  child: Container(
-                    decoration: BoxDecoration(
-                      color: Theme.of(context).colorScheme.primary,
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                    padding: const EdgeInsets.all(12),
-                    child: GridWidget(
-                      key: _gridWidgetKey,
-                      grid: _currentGrid!.copyWith(objects: _placedObjects, boundaries: _boundaries),
-                      onObjectDropped: (row, col, type, icon, [rotation = 0]) => _handleObjectDropped(row, col, type, icon, rotation),
-                      boundaryMode: _mode == 'object' ? 'none' : _selectedBoundaryType,
-                      onAddBoundary: _handleAddBoundary,
-                      onRemoveBoundary: _handleRemoveBoundary,
-                    ),
+                  child: Stack(
+                    children: [
+                      Container(
+                        decoration: BoxDecoration(
+                          color: Theme.of(context).colorScheme.primary,
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        padding: const EdgeInsets.all(12),
+                        child: GridWidget(
+                          key: _gridWidgetKey,
+                          grid: _currentGrid!.copyWith(objects: _placedObjects, boundaries: _boundaries),
+                          onObjectDropped: (row, col, type, icon, [rotation = 0]) => _handleObjectDropped(row, col, type, icon, rotation),
+                          boundaryMode: _mode == 'object' ? 'none' : _selectedBoundaryType,
+                          onAddBoundary: _handleAddBoundary,
+                          onRemoveBoundary: _handleRemoveBoundary,
+                        ),
+                      ),
+                      if (_isAutoPlacing)
+                        Container(
+                          decoration: BoxDecoration(
+                            color: Colors.black.withOpacity(0.5),
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                          child: const Center(
+                            child: Column(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                SizedBox(
+                                  width: 32,
+                                  height: 32,
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 3,
+                                    valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                                  ),
+                                ),
+                                SizedBox(height: 8),
+                                Text(
+                                  'Optimizing layout...',
+                                  style: TextStyle(
+                                    color: Colors.white,
+                                    fontSize: 16,
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                    ],
                   ),
                 ),
               ),

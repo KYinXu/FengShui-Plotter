@@ -7,6 +7,7 @@ from helpers import (
     get_boundary_span,
     get_object_grid_dimensions
 )
+from feng_shui_optimizer import FengShuiOptimizer
 
 app = Flask(__name__)
 
@@ -153,6 +154,58 @@ def random_auto_placer():
         "placements": placements,
         "clear_grid": True  # Indicate that the grid should be cleared first
     })
+
+@app.route('/feng-shui-optimizer', methods=['POST'])
+def feng_shui_optimizer():
+    data = request.json
+    
+    # Get grid dimensions from request
+    grid_width = data.get('grid_width', 144)
+    grid_height = data.get('grid_height', 144)
+    
+    # Get objects to place (default to standard set)
+    objects_to_place = data.get('objects', ['bed', 'desk', 'door', 'window'])
+    
+    # Get custom configuration if provided
+    custom_config = data.get('config', None)
+    
+    print(f"DEBUG: Starting Feng Shui optimization for grid {grid_width}x{grid_height}")
+    print(f"DEBUG: Objects to place: {objects_to_place}")
+    
+    try:
+        # Create optimizer
+        optimizer = FengShuiOptimizer(grid_width, grid_height, custom_config)
+        
+        # Optimize layout
+        optimized_layout, score = optimizer.optimize_layout(objects_to_place)
+        
+        # Ensure all requested objects are present
+        placed_types = [p['type'] for p in optimized_layout]
+        for obj_type in objects_to_place:
+            if obj_type not in placed_types:
+                print(f"WARNING: Adding missing {obj_type} to response")
+                optimized_layout.append({'type': obj_type, 'x': 0, 'y': 0})
+        
+        # Get detailed analysis
+        analysis = optimizer.get_layout_analysis(optimized_layout)
+        
+        print(f"DEBUG: Optimization completed with score: {score:.2f}")
+        print(f"DEBUG: Final layout has {len(optimized_layout)} objects: {[p['type'] for p in optimized_layout]}")
+        
+        return jsonify({
+            "placements": optimized_layout,
+            "clear_grid": True,
+            "feng_shui_score": score,
+            "analysis": analysis
+        })
+        
+    except Exception as e:
+        print(f"DEBUG: Error during Feng Shui optimization: {e}")
+        return jsonify({
+            "error": f"Feng Shui optimization failed: {str(e)}",
+            "placements": [],
+            "clear_grid": False
+        }), 500
 
 if __name__ == '__main__':
     app.run(port=5000) 
