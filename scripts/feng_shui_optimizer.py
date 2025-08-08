@@ -90,7 +90,8 @@ class FengShuiOptimizer:
                 'wall_placement_bonus': 50.0,     # Bonus for furniture against walls
                 'corner_placement_bonus': 100.0,  # Extra bonus for corner placement
                 'door_blocked': 2000.0,           # Extremely harsh penalty for blocked doors
-                'furniture_overlap': 3000.0       # Extremely harsh penalty for overlapping furniture
+                'furniture_overlap': 3000.0,      # Extremely harsh penalty for overlapping furniture
+                'door_furniture_gap': 150.0       # Penalty for small gaps between doors and furniture
             },
             
             # Algorithm parameters
@@ -392,6 +393,29 @@ class FengShuiOptimizer:
                 penalty_weight = self.config['feng_shui_penalties']['door_facing_bed']
                 penalty_score -= penalty_weight
                 print(f"DEBUG: Door facing bed penalty - distance: {door_to_bed_distance:.2f}")
+        
+        # Penalty 6: Small gaps between doors and furniture (should be at least 2 units)
+        door_placements = [p for p in placements if p['type'] == 'door']
+        furniture_placements = [p for p in placements if p['type'] in ['bed', 'desk']]
+        
+        for door_placement in door_placements:
+            door_x, door_y = door_placement['x'], door_placement['y']
+            
+            for furniture_placement in furniture_placements:
+                furniture_x, furniture_y = furniture_placement['x'], furniture_placement['y']
+                furniture_type = furniture_placement['type']
+                furniture_width, furniture_height = get_object_grid_dimensions(furniture_type)
+                
+                # Calculate distance from door to furniture center
+                furniture_center_x = furniture_x + furniture_width // 2
+                furniture_center_y = furniture_y + furniture_height // 2
+                door_furniture_distance = math.sqrt((door_x - furniture_center_x)**2 + (door_y - furniture_center_y)**2)
+                
+                # Penalty for furniture too close to door (less than 3 units)
+                if door_furniture_distance < 3:
+                    penalty_weight = self.config['feng_shui_penalties']['door_furniture_gap']
+                    penalty_score -= penalty_weight
+                    print(f"DEBUG: Door-furniture gap penalty - {furniture_type} too close to door, distance: {door_furniture_distance:.2f}")
         
         return penalty_score
 

@@ -619,8 +619,9 @@ class GridWidgetState extends State<GridWidget> {
               const SizedBox(width: 8),
               FengShuiScoreBar(
                 score: widget.fengShuiScore,
-                maxScore: 100.0,
+                maxScore: 400.0,
                 message: widget.fengShuiMessage,
+                gridHeight: gridHeightPx,
               ),
             ],
           ),

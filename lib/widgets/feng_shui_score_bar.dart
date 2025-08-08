@@ -5,22 +5,27 @@ class FengShuiScoreBar extends StatelessWidget {
   final double? score;
   final double maxScore;
   final String? message;
+  final double? gridHeight; // New parameter to match grid height
 
   const FengShuiScoreBar({
     super.key,
     required this.score,
-    this.maxScore = 100.0,
+    this.maxScore = 400.0,
     this.message,
+    this.gridHeight, // Add grid height parameter
   });
 
   @override
   Widget build(BuildContext context) {
+    // Use grid height if provided, otherwise default to 180
+    final barHeight = gridHeight ?? 180.0;
+    
     if (score == null) {
       // Show default state when no score is available
       return Container(
-        width: 50, // Reduced from 60
-        height: 180, // Reduced from 200
-        padding: const EdgeInsets.all(6.0), // Reduced from 8.0
+        width: 52, // Reduced from 60 to 52 (8 pixels narrower)
+        height: barHeight,
+        padding: const EdgeInsets.all(6.0),
         decoration: BoxDecoration(
           color: Colors.grey.withOpacity(0.1),
           borderRadius: BorderRadius.circular(8.0),
@@ -29,29 +34,22 @@ class FengShuiScoreBar extends StatelessWidget {
         child: Column(
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
-            // Title
-            RotatedBox(
-              quarterTurns: 3, // Rotate text 270 degrees
-              child: Text(
-                'Feng Shui',
-                style: TextStyle(
-                  fontWeight: FontWeight.bold,
-                  fontSize: 12,
-                  color: Colors.grey,
-                ),
-              ),
-            ),
-            
-            // Empty progress bar
+            // Empty progress bar (bottom up)
             Expanded(
-              child: RotatedBox(
-                quarterTurns: 1, // Rotate 90 degrees to make it vertical
-                child: LinearProgressIndicator(
-                  value: 0.0,
-                  backgroundColor: Colors.grey.withOpacity(0.2),
-                  valueColor: AlwaysStoppedAnimation<Color>(Colors.grey),
-                  minHeight: 8,
-                ),
+              child: Column(
+                children: [
+                  // Empty space at top
+                  Expanded(
+                    child: Container(
+                      color: Colors.grey.withOpacity(0.2),
+                    ),
+                  ),
+                  // Empty progress at bottom
+                  Container(
+                    height: 0,
+                    color: Colors.grey,
+                  ),
+                ],
               ),
             ),
             
@@ -65,21 +63,21 @@ class FengShuiScoreBar extends StatelessWidget {
               ),
             ),
             
-            // Default rating
-            Text(
-              'No Layout',
-              style: TextStyle(
-                fontSize: 10,
-                color: Colors.grey.withOpacity(0.8),
-              ),
-            ),
-            
             // Default percentage
             Text(
               '0%',
               style: TextStyle(
                 fontSize: 10,
                 color: Colors.grey.withOpacity(0.8),
+              ),
+            ),
+            
+            // "out of 400" text
+            Text(
+              'out of 400',
+              style: TextStyle(
+                fontSize: 8,
+                color: Colors.grey.withOpacity(0.6),
               ),
             ),
           ],
@@ -110,9 +108,9 @@ class FengShuiScoreBar extends StatelessWidget {
     }
 
     return Container(
-      width: 50, // Reduced from 60
-      height: 180, // Reduced from 200
-      padding: const EdgeInsets.all(6.0), // Reduced from 8.0
+      width: 52, // Reduced from 60 to 52 (8 pixels narrower)
+      height: barHeight,
+      padding: const EdgeInsets.all(6.0),
       decoration: BoxDecoration(
         color: backgroundColor,
         borderRadius: BorderRadius.circular(8.0),
@@ -121,40 +119,38 @@ class FengShuiScoreBar extends StatelessWidget {
       child: Column(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
-          // Title
-          RotatedBox(
-            quarterTurns: 3, // Rotate text 270 degrees
-            child: Text(
-              'Feng Shui',
-              style: TextStyle(
-                fontWeight: FontWeight.bold,
-                fontSize: 12,
-                color: color,
-              ),
-            ),
-          ),
-          
-          // Vertical progress bar
+          // Vertical progress bar (bottom up)
           Expanded(
-            child: RotatedBox(
-              quarterTurns: 1, // Rotate 90 degrees to make it vertical
-              child: LinearProgressIndicator(
-                value: normalizedScore,
-                backgroundColor: color.withOpacity(0.2),
-                valueColor: AlwaysStoppedAnimation<Color>(color),
-                minHeight: 8,
-              ),
+            child: Column(
+              children: [
+                // Empty space at top
+                Expanded(
+                  flex: ((1.0 - normalizedScore) * 100).round(),
+                  child: Container(
+                    color: color.withOpacity(0.2),
+                  ),
+                ),
+                // Filled progress at bottom
+                Expanded(
+                  flex: (normalizedScore * 100).round(),
+                  child: Container(
+                    color: color,
+                  ),
+                ),
+              ],
             ),
           ),
           
-          // Score text
+          // Score text (handles four digits)
           Text(
             '${score!.toStringAsFixed(0)}',
             style: TextStyle(
               fontWeight: FontWeight.bold,
-              fontSize: 16,
+              fontSize: 14, // Slightly smaller to fit four digits
               color: color,
             ),
+            textAlign: TextAlign.center,
+            overflow: TextOverflow.visible,
           ),
           
           // Percentage
@@ -163,6 +159,15 @@ class FengShuiScoreBar extends StatelessWidget {
             style: TextStyle(
               fontSize: 10,
               color: color.withOpacity(0.8),
+            ),
+          ),
+          
+          // "out of 400" text
+          Text(
+            'out of 400',
+            style: TextStyle(
+              fontSize: 8,
+              color: color.withOpacity(0.6),
             ),
           ),
         ],
