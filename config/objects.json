@@ -9,7 +9,7 @@
     "desk": {
       "width": 48,
       "height": 24,
-      "icon": "desk",
+      "icon": "chair",
       "type": "furniture"
     },
     "door": {

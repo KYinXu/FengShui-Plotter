@@ -125,17 +125,48 @@ class _HomeScreenState extends State<HomeScreen> {
                             _placedObjects = [];
                             _boundaries = [];
                             
-                            // Place new objects
+                            // Place new objects and boundaries
                             final placements = response['placements'] as List<dynamic>;
-                            _placedObjects = placements.map((p) {
+                            
+                            for (final p in placements) {
                               final placement = p as Map<String, dynamic>;
-                              return GridObject(
-                                type: placement['type'] ?? 'Unknown',
-                                row: (placement['y'] ?? 0) as int,
-                                col: (placement['x'] ?? 0) as int,
-                                icon: ObjectConfig.getIcon(placement['type'] ?? 'Unknown'),
-                              );
-                            }).toList();
+                              final type = placement['type'] ?? 'Unknown';
+                              final x = (placement['x'] ?? 0) as int;
+                              final y = (placement['y'] ?? 0) as int;
+                              
+                              if (ObjectConfig.isBoundary(type)) {
+                                // Place as boundary with proper span and side calculation
+                                final boundaryConfig = BoundaryRegistry.getConfig(type);
+                                final span = boundaryConfig?.length.round() ?? 12; // Default 12 inches
+                                
+                                // Determine side based on position
+                                String side;
+                                if (x == 0) side = 'left';
+                                else if (x == _currentGrid!.widthInches.floor() - 1) side = 'right';
+                                else if (y == 0) side = 'top';
+                                else if (y == _currentGrid!.lengthInches.floor() - 1) side = 'bottom';
+                                else side = 'right'; // Fallback
+                                
+                                final boundary = GridBoundary(
+                                  type: type,
+                                  row: y,
+                                  col: x,
+                                  side: side,
+                                  icon: ObjectConfig.getIcon(type),
+                                  span: span,
+                                );
+                                _boundaries.add(boundary);
+                              } else {
+                                // Place as regular object
+                                final obj = GridObject(
+                                  type: type,
+                                  row: y,
+                                  col: x,
+                                  icon: ObjectConfig.getIcon(type),
+                                );
+                                _placedObjects.add(obj);
+                              }
+                            }
                             
                             // Print all placed objects and boundaries
                             print('=== AUTO PLACEMENT COMPLETED ===');

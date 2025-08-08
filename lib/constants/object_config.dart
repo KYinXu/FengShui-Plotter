@@ -13,7 +13,7 @@ class ObjectConfig {
   /// Object icons
   static const Map<String, IconData> icons = {
     'bed': Icons.bed,
-    'desk': Icons.desk,
+    'desk': Icons.chair,  // Fixed: should be chair, not desk
     'door': Icons.door_front_door,
     'window': Icons.window,
   };

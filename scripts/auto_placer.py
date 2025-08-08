@@ -17,7 +17,7 @@ def load_object_config():
         return {
             "objects": {
                 "bed": {"width": 80, "height": 60, "icon": "bed", "type": "furniture"},
-                "desk": {"width": 48, "height": 24, "icon": "desk", "type": "furniture"},
+                "desk": {"width": 48, "height": 24, "icon": "chair", "type": "furniture"},
                 "door": {"width": 30, "height": 0, "icon": "door_front_door", "type": "boundary"},
                 "window": {"width": 24, "height": 0, "icon": "window", "type": "boundary"}
             },
@@ -30,10 +30,27 @@ OBJECT_CONFIG = load_object_config()
 OBJECT_DIMENSIONS = OBJECT_CONFIG["objects"]
 GRID_CELL_SIZE = OBJECT_CONFIG["grid_cell_size"]
 
+def is_boundary(obj_type):
+    """Check if object is a boundary (door/window)"""
+    return obj_type in OBJECT_DIMENSIONS and OBJECT_DIMENSIONS[obj_type]["type"] == "boundary"
+
+def get_boundary_span(obj_type):
+    """Get the span (in grid cells) for a boundary based on its length in inches"""
+    if obj_type not in OBJECT_DIMENSIONS:
+        return 12  # Default 12 inches
+    
+    dims = OBJECT_DIMENSIONS[obj_type]
+    length_inches = dims['width']  # Use width as length for boundaries
+    return max(1, length_inches // GRID_CELL_SIZE)
+
 def get_object_polygon(obj_type, x, y):
     """Get the polygon points for an object at position (x, y)"""
     if obj_type not in OBJECT_DIMENSIONS:
         return [(x, y), (x+1, y), (x+1, y+1), (x, y+1)]  # Default 1x1
+    
+    # Boundaries don't take up grid space
+    if is_boundary(obj_type):
+        return [(x, y)]
     
     dims = OBJECT_DIMENSIONS[obj_type]
     width = dims['width']
@@ -65,6 +82,22 @@ def is_position_valid(x, y, obj_type, occupied_positions, grid_width, grid_heigh
     if obj_type not in OBJECT_DIMENSIONS:
         return False
     
+    # Boundaries can be placed on walls
+    if is_boundary(obj_type):
+        # Check if position is on a wall
+        is_on_wall = (x == 0 or x == grid_width - 1 or y == 0 or y == grid_height - 1)
+        if not is_on_wall:
+            return False
+        
+        # Check if boundary fits within grid bounds
+        span = get_boundary_span(obj_type)
+        if (x == 0 or x == grid_width - 1) and y + span > grid_height:
+            return False  # Vertical wall, check height
+        if (y == 0 or y == grid_height - 1) and x + span > grid_width:
+            return False  # Horizontal wall, check width
+        
+        return True
+    
     dims = OBJECT_DIMENSIONS[obj_type]
     width = dims['width']
     height = dims['height']
@@ -88,6 +121,10 @@ def add_occupied_positions(x, y, obj_type, occupied_positions):
     """Add all grid cells occupied by an object to the occupied positions set"""
     if obj_type not in OBJECT_DIMENSIONS:
         occupied_positions.add((x, y))
+        return
+    
+    # Boundaries don't occupy grid space
+    if is_boundary(obj_type):
         return
     
     dims = OBJECT_DIMENSIONS[obj_type]
@@ -122,8 +159,13 @@ def random_auto_placer():
     door_placed = False
     attempts = 0
     while not door_placed and attempts < 50:
-        door_x = random.choice([0, grid_width - 1])  # Left or right wall
-        door_y = random.randint(0, grid_height - 1)
+        # Place door on walls
+        if random.choice([True, False]):  # Horizontal wall
+            door_x = random.randint(0, grid_width - 1)
+            door_y = random.choice([0, grid_height - 1])
+        else:  # Vertical wall
+            door_x = random.choice([0, grid_width - 1])
+            door_y = random.randint(0, grid_height - 1)
         
         if is_position_valid(door_x, door_y, 'door', occupied_positions, grid_width, grid_height):
             placements.append({"x": door_x, "y": door_y, "type": "door"})
@@ -138,16 +180,35 @@ def random_auto_placer():
         # Try to place window on opposite wall from door
         if door_placed and len(placements) > 0:
             door_pos = placements[0]
+            # Place window on opposite wall
             if door_pos['x'] == 0:
                 window_x = grid_width - 1
+                window_y = random.randint(0, grid_height - 1)
             elif door_pos['x'] == grid_width - 1:
                 window_x = 0
+                window_y = random.randint(0, grid_height - 1)
+            elif door_pos['y'] == 0:
+                window_x = random.randint(0, grid_width - 1)
+                window_y = grid_height - 1
+            elif door_pos['y'] == grid_height - 1:
+                window_x = random.randint(0, grid_width - 1)
+                window_y = 0
             else:
-                window_x = random.choice([0, grid_width - 1])
+                # Fallback to random wall placement
+                if random.choice([True, False]):  # Horizontal wall
+                    window_x = random.randint(0, grid_width - 1)
+                    window_y = random.choice([0, grid_height - 1])
+                else:  # Vertical wall
+                    window_x = random.choice([0, grid_width - 1])
+                    window_y = random.randint(0, grid_height - 1)
         else:
-            window_x = random.choice([0, grid_width - 1])
-        
-        window_y = random.randint(0, grid_height - 1)
+            # Random wall placement
+            if random.choice([True, False]):  # Horizontal wall
+                window_x = random.randint(0, grid_width - 1)
+                window_y = random.choice([0, grid_height - 1])
+            else:  # Vertical wall
+                window_x = random.choice([0, grid_width - 1])
+                window_y = random.randint(0, grid_height - 1)
         
         if is_position_valid(window_x, window_y, 'window', occupied_positions, grid_width, grid_height):
             placements.append({"x": window_x, "y": window_y, "type": "window"})
