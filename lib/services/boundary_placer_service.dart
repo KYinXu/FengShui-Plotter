@@ -5,10 +5,16 @@ class BoundaryPlacerService {
   static const int _span = 12; // 12 grid spaces (1 foot)
   static const double _snapRadius = 5.0; // More generous snap radius (5 grid cells)
   static const double _edgeThreshold = 0.3; // More generous edge threshold for click placement
+  static const int _gridCellSize = 12; // 12 inches per grid cell
 
   /// Checks if a type is a boundary type
   static bool isBoundaryType(String type) {
     return type == 'door' || type == 'window';
+  }
+
+  /// Converts inches to grid cells (1 grid cell = 1 inch)
+  static int inchesToGridCells(double inches) {
+    return inches.round();
   }
 
   /// Converts BoundaryElement to GridBoundary
@@ -90,11 +96,13 @@ class BoundaryPlacerService {
 
   /// Validates if boundary placement is possible for the given side and grid dimensions
   static bool canPlaceBoundary(String side, int maxRow, int maxCol, [String? boundaryType]) {
-    // Use the actual boundary size from config, or fallback to _span
+    // Use the actual boundary size from config, converting inches to grid cells
     int span = _span;
     if (boundaryType != null) {
       final config = BoundaryRegistry.getConfig(boundaryType);
-      span = config?.length.round() ?? _span;
+      if (config != null) {
+        span = inchesToGridCells(config.length);
+      }
     }
     
     if ((side == 'top' || side == 'bottom') && maxCol < span) return false;
@@ -111,7 +119,7 @@ class BoundaryPlacerService {
     List<GridObject> existingObjects
   ) {
     final config = BoundaryRegistry.getConfig(boundaryType);
-    final int span = config?.length.round() ?? _span;
+    final int span = config != null ? inchesToGridCells(config.length) : _span;
     
     // Check each cell that the boundary would occupy across its entire span
     for (int i = 0; i < span; i++) {
@@ -152,7 +160,7 @@ class BoundaryPlacerService {
     List<GridBoundary> existingBoundaries
   ) {
     final config = BoundaryRegistry.getConfig(boundaryType);
-    final int span = config?.length.round() ?? _span;
+    final int span = config != null ? inchesToGridCells(config.length) : _span;
     
     // Check each cell that the boundary would occupy across its entire span
     for (int i = 0; i < span; i++) {
@@ -248,6 +256,45 @@ class BoundaryPlacerService {
     return {'row': startRow, 'col': startCol};
   }
 
+  /// Adjusts the starting position to ensure the boundary fits within the grid
+  static Map<String, int> adjustBoundaryPosition(
+    String side,
+    double cellRow,
+    double cellCol,
+    int maxRow,
+    int maxCol,
+    String? boundaryType
+  ) {
+    int startRow = cellRow.round();
+    int startCol = cellCol.round();
+    
+    // Use the actual boundary size from config, converting inches to grid cells
+    int span = _span;
+    if (boundaryType != null) {
+      final config = BoundaryRegistry.getConfig(boundaryType);
+      if (config != null) {
+        span = inchesToGridCells(config.length);
+      }
+    }
+
+    switch (side) {
+      case 'top':
+        if (startCol + span > maxCol) startCol = maxCol - span;
+        break;
+      case 'bottom':
+        if (startCol + span > maxCol) startCol = maxCol - span;
+        break;
+      case 'left':
+        if (startRow + span > maxRow) startRow = maxRow - span;
+        break;
+      case 'right':
+        if (startRow + span > maxRow) startRow = maxRow - span;
+        break;
+    }
+
+    return {'row': startRow, 'col': startCol};
+  }
+
   /// Checks if a position is on the outer edge of the grid
   static bool isOuterEdge(String side, double cellRow, double cellCol, int maxRow, int maxCol) {
     switch (side) {
@@ -273,9 +320,9 @@ class BoundaryPlacerService {
   ) {
     List<BoundaryElement> segment = [];
     
-    // Use the actual boundary size from config, or fallback to _span
+    // Use the actual boundary size from config, converting inches to grid cells
     final config = BoundaryRegistry.getConfig(type);
-    final int span = config?.length.round() ?? _span;
+    final int span = config != null ? inchesToGridCells(config.length) : _span;
     
     // Create a single boundary element that represents the entire span
     // For top/bottom boundaries, use the starting column
@@ -316,9 +363,9 @@ class BoundaryPlacerService {
   ) {
     List<GridBoundary> segment = [];
     
-    // Use the actual boundary size from config, or fallback to _span
+    // Use the actual boundary size from config, converting inches to grid cells
     final config = BoundaryRegistry.getConfig(type);
-    final int span = config?.length.round() ?? _span;
+    final int span = config != null ? inchesToGridCells(config.length) : _span;
     
     // Create a single boundary that represents the entire span
     // For top/bottom boundaries, use the starting column
@@ -454,7 +501,7 @@ class BoundaryPlacerService {
 
     // Check if this exact boundary already exists (same type, side, position, and span)
     final config = BoundaryRegistry.getConfig(type);
-    final int span = config?.length.round() ?? _span;
+    final int span = config != null ? inchesToGridCells(config.length) : _span;
     final exactMatch = existingBoundaries.any((existing) => 
       existing.type == type && 
       existing.side == side && 
@@ -688,7 +735,7 @@ class BoundaryPlacerService {
     int startRow = cellRow;
     
     // Adjust if boundary would go outside grid
-    final int span = config.length.round();
+    final int span = inchesToGridCells(config.length);
     if (side == 'top' || side == 'bottom') {
       if (startCol + span > maxCol) startCol = maxCol - span;
       if (startCol < 0) startCol = 0;

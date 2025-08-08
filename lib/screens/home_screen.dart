@@ -113,7 +113,7 @@ class _HomeScreenState extends State<HomeScreen> {
                         if (_currentGrid == null) return;
                         setState(() => _isAutoPlacing = true);
                         try {
-                          // Prepare grid data for the Python service
+                          // Prepare grid data for the Python service (use actual inch values)
                           final gridData = {
                             'grid_width': _currentGrid!.widthInches.floor(),
                             'grid_height': _currentGrid!.lengthInches.floor(),
@@ -137,7 +137,7 @@ class _HomeScreenState extends State<HomeScreen> {
                               if (ObjectConfig.isBoundary(type)) {
                                 // Place as boundary with proper span and side calculation
                                 final boundaryConfig = BoundaryRegistry.getConfig(type);
-                                final span = boundaryConfig?.length.round() ?? 12; // Default 12 inches
+                                final span = boundaryConfig?.length.round() ?? 30; // Use actual inch value
                                 
                                 // Determine side based on position
                                 String side;
