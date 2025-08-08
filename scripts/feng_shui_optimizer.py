@@ -123,123 +123,102 @@ class FengShuiOptimizer:
         return self.bagua_map.get((x, y), 'health')
     
     def _calculate_bagua_score(self, placement: Dict) -> float:
-        """
-        Calculate the bagua score for a placement.
-        Higher scores are better.
-        """
-        obj_type = placement['type']
+        """Calculate Bagua score for a placement."""
         x, y = placement['x'], placement['y']
+        obj_type = placement['type']
         
-        if obj_type not in self.config['furniture_preferences']:
-            return 0.0
+        # Get object dimensions
+        obj_width, obj_height = get_object_grid_dimensions(obj_type)
         
-        preferences = self.config['furniture_preferences'][obj_type]
-        zone = self._get_bagua_zone(x, y)
+        # Calculate center of object
+        center_x = x + obj_width / 2
+        center_y = y + obj_height / 2
         
-        # Check if placement is in preferred zones
-        if zone in preferences.get('preferred_zones', []):
-            return self.config['bagua_weights'][zone]
+        # Map to Bagua zones (3x3 grid)
+        zone_x = int((center_x / self.grid_width) * 3)
+        zone_y = int((center_y / self.grid_height) * 3)
+        zone_x = min(2, max(0, zone_x))
+        zone_y = min(2, max(0, zone_y))
         
-        # Check if placement is in zones to avoid
-        if zone in preferences.get('avoid_zones', []):
-            return -self.config['bagua_weights'][zone]
+        # Bagua zone preferences for different objects
+        bagua_preferences = {
+            'bed': [8, 7, 6, 5, 4, 3, 2, 1, 0],  # Prefer back zones
+            'desk': [6, 7, 8, 3, 4, 5, 0, 1, 2],  # Prefer front zones
+            'door': [6, 3, 0, 7, 4, 1, 8, 5, 2],  # Prefer left zones
+            'window': [2, 5, 8, 1, 4, 7, 0, 3, 6],  # Prefer right zones
+        }
         
-        # Neutral placement
-        return 0.0
-    
+        zone_index = zone_y * 3 + zone_x
+        preferences = bagua_preferences.get(obj_type, [4, 4, 4, 4, 4, 4, 4, 4, 4])
+        zone_score = preferences[zone_index]
+        
+        return zone_score * 15.0  # Increased from 10.0
+
     def _calculate_command_position_score(self, placements: List[Dict]) -> float:
-        """
-        Calculate command position score.
-        Objects should face the door for good energy flow.
-        """
-        score = 0.0
-        
-        # Find door position
+        """Calculate command position score (bed should face door)."""
+        bed_placement = None
         door_placement = None
-        for placement in placements:
-            if placement['type'] == 'door':
-                door_placement = placement
-                break
         
-        if not door_placement:
+        for placement in placements:
+            if placement['type'] == 'bed':
+                bed_placement = placement
+            elif placement['type'] == 'door':
+                door_placement = placement
+        
+        if not bed_placement or not door_placement:
             return 0.0
         
+        # Calculate distance between bed and door
+        bed_x, bed_y = bed_placement['x'], bed_placement['y']
         door_x, door_y = door_placement['x'], door_placement['y']
         
-        for placement in placements:
-            obj_type = placement['type']
-            if obj_type in ['bed', 'desk']:
-                preferences = self.config['furniture_preferences'][obj_type]
-                
-                if preferences.get('command_position', False):
-                    # Check if object faces the door
-                    x, y = placement['x'], placement['y']
-                    
-                    # Simple command position check
-                    if self._faces_door(x, y, door_x, door_y):
-                        score += self.config['energy_flow']['command_position_weight']
+        distance = math.sqrt((bed_x - door_x)**2 + (bed_y - door_y)**2)
         
-        return score
-    
-    def _faces_door(self, obj_x: int, obj_y: int, door_x: int, door_y: int) -> bool:
-        """
-        Check if an object faces the door.
-        Simplified implementation - can be enhanced with more sophisticated logic.
-        """
-        # For now, consider it facing the door if it's not too close and not behind it
-        distance = math.sqrt((obj_x - door_x)**2 + (obj_y - door_y)**2)
-        return distance > 2 and distance < self.grid_width // 2
-    
+        # Optimal distance is moderate (not too close, not too far)
+        optimal_distance = min(self.grid_width, self.grid_height) * 0.3
+        distance_score = max(0, 50 - abs(distance - optimal_distance))
+        
+        return distance_score * 2.0  # Increased from 1.0
+
     def _calculate_chi_flow_score(self, placements: List[Dict]) -> float:
-        """
-        Calculate chi (energy) flow score.
-        Clear paths and balanced layout are preferred.
-        """
-        score = 0.0
+        """Calculate chi flow score (energy flow through space)."""
+        if len(placements) < 2:
+            return 0.0
         
-        # Create a grid representation
-        grid = [[0 for _ in range(self.grid_width)] for _ in range(self.grid_height)]
+        total_score = 0.0
         
-        # Mark occupied positions
-        for placement in placements:
-            if placement['type'] not in ['door', 'window']:  # Boundaries don't block chi
-                x, y = placement['x'], placement['y']
-                obj_width, obj_height = get_object_grid_dimensions(placement['type'])
+        # Check spacing between objects
+        for i, placement1 in enumerate(placements):
+            for j, placement2 in enumerate(placements):
+                if i >= j:
+                    continue
                 
-                for dx in range(obj_width):
-                    for dy in range(obj_height):
-                        if 0 <= x + dx < self.grid_width and 0 <= y + dy < self.grid_height:
-                            grid[y + dy][x + dx] = 1
+                x1, y1 = placement1['x'], placement1['y']
+                x2, y2 = placement2['x'], placement2['y']
+                
+                distance = math.sqrt((x1 - x2)**2 + (y1 - y2)**2)
+                
+                # Optimal spacing is moderate
+                if 5 <= distance <= 20:
+                    total_score += 20.0  # Increased from 10.0
+                elif distance < 5:
+                    total_score -= 10.0  # Penalty for too close
+                else:
+                    total_score += 5.0  # Small bonus for far apart
         
-        # Calculate clear paths (simplified)
-        clear_paths = 0
-        for y in range(self.grid_height):
-            for x in range(self.grid_width):
-                if grid[y][x] == 0:
-                    # Count clear neighbors
-                    clear_neighbors = 0
-                    for dx, dy in [(-1, 0), (1, 0), (0, -1), (0, 1)]:
-                        nx, ny = x + dx, y + dy
-                        if 0 <= nx < self.grid_width and 0 <= ny < self.grid_height:
-                            if grid[ny][nx] == 0:
-                                clear_neighbors += 1
-                    clear_paths += clear_neighbors
-        
-        score += clear_paths * self.config['energy_flow']['chi_path_weight']
-        
-        # Balance penalty (too much furniture in one area)
-        for zone in self.config['bagua_weights']:
-            zone_count = 0
-            for placement in placements:
-                x, y = placement['x'], placement['y']
-                if self._get_bagua_zone(x, y) == zone:
-                    zone_count += 1
+        # Bonus for balanced layout (objects not all clustered)
+        if len(placements) > 2:
+            # Calculate center of mass
+            center_x = sum(p['x'] for p in placements) / len(placements)
+            center_y = sum(p['y'] for p in placements) / len(placements)
             
-            if zone_count > 2:  # Too much furniture in one zone
-                score -= (zone_count - 2) * self.config['energy_flow']['clutter_penalty']
+            # Calculate spread
+            spread = sum(math.sqrt((p['x'] - center_x)**2 + (p['y'] - center_y)**2) for p in placements)
+            spread_score = min(50, spread / len(placements))
+            total_score += spread_score
         
-        return score
-    
+        return total_score
+
     def _calculate_layout_score(self, placements: List[Dict]) -> float:
         """
         Calculate the overall Feng Shui score for a layout.
@@ -248,6 +227,11 @@ class FengShuiOptimizer:
             return 0.0
         
         total_score = 0.0
+        
+        # Check for invalid configurations first - extremely negative scores
+        invalid_score = self._check_invalid_configurations(placements)
+        if invalid_score < -1000:  # If there are invalid configurations
+            return invalid_score
         
         # Bagua scores
         for placement in placements:
@@ -264,34 +248,91 @@ class FengShuiOptimizer:
         chi_score = self._calculate_chi_flow_score(placements)
         total_score += chi_score
         
+        # Bonus for having all required objects
+        total_score += len(placements) * 25.0  # Increased bonus for complete layouts
+        
+        # Bonus for wall placement of boundaries
+        for placement in placements:
+            if placement['type'] in ['door', 'window']:
+                x, y = placement['x'], placement['y']
+                if (x == 0 or x == self.grid_width - 1 or 
+                    y == 0 or y == self.grid_height - 1):
+                    total_score += 30.0  # Increased from previous values
+        
         return total_score
+    
+    def _check_invalid_configurations(self, placements: List[Dict]) -> float:
+        """
+        Check for invalid configurations and return extremely negative scores.
+        """
+        score = 0.0
+        
+        # Check each placement for bounds violations
+        for placement in placements:
+            x, y = placement['x'], placement['y']
+            obj_type = placement['type']
+            
+            # Get object dimensions
+            if obj_type in ['bed', 'desk']:
+                obj_width, obj_height = get_object_grid_dimensions(obj_type)
+                
+                # Check if object extends beyond grid bounds
+                if (x < 0 or y < 0 or 
+                    x + obj_width > self.grid_width or 
+                    y + obj_height > self.grid_height):
+                    print(f"DEBUG: {obj_type} at ({x}, {y}) extends beyond grid bounds")
+                    score -= 10000  # Extremely negative score for out-of-bounds
+                    return score
+        
+        # Check for overlapping objects (bed and desk)
+        furniture_placements = [p for p in placements if p['type'] in ['bed', 'desk']]
+        
+        for i, placement1 in enumerate(furniture_placements):
+            for j, placement2 in enumerate(furniture_placements):
+                if i >= j:  # Skip self-comparison and duplicate comparisons
+                    continue
+                
+                # Check if these objects overlap
+                if self._objects_overlap(placement1, placement2):
+                    print(f"DEBUG: {placement1['type']} and {placement2['type']} overlap")
+                    score -= 10000  # Extremely negative score for overlap
+                    return score
+        
+        return score
+    
+    def _objects_overlap(self, placement1: Dict, placement2: Dict) -> bool:
+        """
+        Check if two objects overlap.
+        """
+        x1, y1 = placement1['x'], placement1['y']
+        x2, y2 = placement2['x'], placement2['y']
+        type1, type2 = placement1['type'], placement2['type']
+        
+        # Get dimensions
+        width1, height1 = get_object_grid_dimensions(type1)
+        width2, height2 = get_object_grid_dimensions(type2)
+        
+        # Check for overlap using bounding box intersection
+        return not (x1 + width1 <= x2 or x2 + width2 <= x1 or 
+                   y1 + height1 <= y2 or y2 + height2 <= y1)
     
     def _generate_random_placement(self, obj_type: str) -> Dict:
         """Generate a random valid placement for an object."""
-        max_attempts = 100
+        max_attempts = 1000  # Increased attempts
         
-        for _ in range(max_attempts):
-            if obj_type in ['door', 'window']:
-                # Place on walls
-                if random.choice([True, False]):  # Horizontal wall
-                    x = random.randint(0, self.grid_width - 1)
-                    y = random.choice([0, self.grid_height - 1])
-                else:  # Vertical wall
-                    x = random.choice([0, self.grid_width - 1])
-                    y = random.randint(0, self.grid_height - 1)
-            else:
-                # Place anywhere in the grid
-                x = random.randint(0, self.grid_width - 1)
-                y = random.randint(0, self.grid_height - 1)
+        for attempt in range(max_attempts):
+            # Generate random position
+            x = random.randint(0, self.grid_width - 1)
+            y = random.randint(0, self.grid_height - 1)
             
             # Check if position is valid
-            occupied_positions = set()  # Simplified for random generation
-            if is_position_valid(x, y, obj_type, occupied_positions, self.grid_width, self.grid_height):
+            if is_position_valid(x, y, obj_type, set(), self.grid_width, self.grid_height):
                 return {'type': obj_type, 'x': x, 'y': y}
         
-        # Fallback to origin if no valid position found
+        # If no valid position found, return a safe default
+        print(f"WARNING: Could not find valid position for {obj_type}, using origin")
         return {'type': obj_type, 'x': 0, 'y': 0}
-    
+
     def _generate_initial_layout(self, objects_to_place: List[str]) -> List[Dict]:
         """Generate an initial random layout with all objects placed."""
         placements = []
@@ -306,7 +347,7 @@ class FengShuiOptimizer:
         # Try to place each object with multiple attempts
         for obj_type in sorted_objects:
             placement = None
-            max_attempts = 500  # Increase attempts even more for desk
+            max_attempts = 1000  # Increased attempts
             print(f"DEBUG: Attempting to place {obj_type}...")
             
             for attempt in range(max_attempts):
@@ -320,7 +361,7 @@ class FengShuiOptimizer:
                     placement = temp_placement
                     print(f"DEBUG: Successfully placed {obj_type} at ({temp_placement['x']}, {temp_placement['y']}) on attempt {attempt + 1}")
                     break
-                elif attempt % 100 == 0:  # Log every 100th attempt
+                elif attempt % 200 == 0:  # Log every 200th attempt
                     print(f"DEBUG: {obj_type} attempt {attempt + 1}: valid={is_valid}, no_collision={no_collision}")
             
             # If we couldn't find a valid placement, force place it at origin
@@ -340,16 +381,16 @@ class FengShuiOptimizer:
         """Create a mutated version of a placement."""
         new_placement = placement.copy()
         
-        # Randomly adjust position
+        # Randomly adjust position with larger range for better exploration
         x, y = placement['x'], placement['y']
         obj_type = placement['type']
         
         # Get object dimensions for bounds checking
         obj_width, obj_height = get_object_grid_dimensions(obj_type)
         
-        # Small random adjustment
-        dx = random.randint(-3, 3)
-        dy = random.randint(-3, 3)
+        # Larger random adjustment for better exploration
+        dx = random.randint(-8, 8)  # Increased from -3,3
+        dy = random.randint(-8, 8)  # Increased from -3,3
         
         # Calculate new position with bounds checking
         new_x = max(0, min(self.grid_width - obj_width, x + dx))
@@ -370,82 +411,149 @@ class FengShuiOptimizer:
             
             # Check bounds and collisions
             if not is_position_valid(x, y, obj_type, occupied_positions, self.grid_width, self.grid_height):
+                print(f"DEBUG: Invalid position for {obj_type} at ({x}, {y})")
                 return False
             
             if check_object_collision(x, y, obj_type, occupied_positions):
+                print(f"DEBUG: Collision detected for {obj_type} at ({x}, {y})")
                 return False
             
             add_occupied_positions(x, y, obj_type, occupied_positions)
         
+        # Additional check for overlapping furniture objects
+        furniture_placements = [p for p in placements if p['type'] in ['bed', 'desk']]
+        for i, placement1 in enumerate(furniture_placements):
+            for j, placement2 in enumerate(furniture_placements):
+                if i >= j:  # Skip self-comparison and duplicate comparisons
+                    continue
+                
+                if self._objects_overlap(placement1, placement2):
+                    print(f"DEBUG: Overlap detected between {placement1['type']} and {placement2['type']}")
+                    return False
+        
         return True
+
+    def _generate_valid_mutation(self, current_layout: List[Dict], objects_to_place: List[str]) -> List[Dict]:
+        """Generate a valid mutated layout that doesn't have overlaps."""
+        max_attempts = 50  # Limit attempts to avoid infinite loops
+        
+        for attempt in range(max_attempts):
+            mutated_layout = []
+            occupied_positions = set()
+            
+            # Try to mutate each placement
+            for placement in current_layout:
+                if random.random() < 0.3:  # 30% chance to mutate each placement
+                    # Try to find a valid mutation
+                    valid_mutation = None
+                    for mutation_attempt in range(20):
+                        mutated_placement = self._mutate_placement(placement)
+                        
+                        # Check if this mutation is valid
+                        if (is_position_valid(mutated_placement['x'], mutated_placement['y'], 
+                                            mutated_placement['type'], occupied_positions, 
+                                            self.grid_width, self.grid_height) and
+                            not check_object_collision(mutated_placement['x'], mutated_placement['y'], 
+                                                     mutated_placement['type'], occupied_positions)):
+                            
+                            valid_mutation = mutated_placement
+                            break
+                    
+                    if valid_mutation is not None:
+                        mutated_layout.append(valid_mutation)
+                        add_occupied_positions(valid_mutation['x'], valid_mutation['y'], 
+                                             valid_mutation['type'], occupied_positions)
+                    else:
+                        # Keep original placement if no valid mutation found
+                        mutated_layout.append(placement.copy())
+                        add_occupied_positions(placement['x'], placement['y'], 
+                                             placement['type'], occupied_positions)
+                else:
+                    mutated_layout.append(placement.copy())
+                    add_occupied_positions(placement['x'], placement['y'], 
+                                         placement['type'], occupied_positions)
+            
+            # Ensure all objects are present
+            placed_types = [p['type'] for p in mutated_layout]
+            for obj_type in objects_to_place:
+                if obj_type not in placed_types:
+                    print(f"WARNING: Adding missing {obj_type} to mutated layout")
+                    mutated_layout.append({'type': obj_type, 'x': 0, 'y': 0})
+            
+            # Final validation
+            if self._is_valid_layout(mutated_layout):
+                return mutated_layout
+        
+        # If we couldn't generate a valid mutation, return the original layout
+        print("WARNING: Could not generate valid mutation, keeping original layout")
+        return current_layout.copy()
     
     def optimize_layout(self, objects_to_place: List[str]) -> Tuple[List[Dict], float]:
-        """
-        Optimize furniture layout using hill-climbing with Feng Shui principles.
-        
-        Args:
-            objects_to_place: List of object types to place
-            
-        Returns:
-            Tuple of (optimized_placements, final_score)
-        """
-        print(f"Starting Feng Shui optimization for {len(objects_to_place)} objects...")
+        """Optimize layout using hill climbing with simulated annealing."""
+        print(f"DEBUG: Starting optimization for {len(objects_to_place)} objects")
         
         # Generate initial layout
         current_layout = self._generate_initial_layout(objects_to_place)
         current_score = self._calculate_layout_score(current_layout)
         
+        print(f"DEBUG: Initial layout score: {current_score:.2f}")
+        
         best_layout = current_layout.copy()
         best_score = current_score
         
-        print(f"Initial score: {current_score:.2f}")
+        # Hill climbing parameters
+        max_iterations = 200  # Increased from 100
+        temperature = 100.0  # Starting temperature for simulated annealing
+        cooling_rate = 0.95  # Cooling rate
         
-        # Hill-climbing with simulated annealing
-        temperature = self.config['algorithm']['temperature']
         no_improvement_count = 0
+        max_no_improvement = 50  # Increased patience
         
-        for iteration in range(self.config['algorithm']['max_iterations']):
-            # Create a mutated version of the current layout
-            new_layout = []
-            for placement in current_layout:
-                if random.random() < self.config['algorithm']['mutation_rate']:
-                    new_placement = self._mutate_placement(placement)
-                    new_layout.append(new_placement)
-                else:
-                    new_layout.append(placement.copy())
+        for iteration in range(max_iterations):
+            # Generate a valid mutated version of the current layout
+            mutated_layout = self._generate_valid_mutation(current_layout, objects_to_place)
             
-            # Ensure layout is valid and contains all objects
-            if not self._is_valid_layout(new_layout) or len(new_layout) != len(objects_to_place):
-                continue
-            
-            # Calculate new score
-            new_score = self._calculate_layout_score(new_layout)
+            # Calculate score for mutated layout
+            mutated_score = self._calculate_layout_score(mutated_layout)
             
             # Accept better solutions or worse solutions with probability (simulated annealing)
-            if new_score > current_score or random.random() < math.exp((new_score - current_score) / temperature):
-                current_layout = new_layout
-                current_score = new_score
+            accept = False
+            if mutated_score > current_score:
+                accept = True
+                print(f"DEBUG: Accepting better score: {mutated_score:.2f} > {current_score:.2f}")
+            elif temperature > 0.1:  # Only accept worse solutions when temperature is high
+                acceptance_probability = math.exp((mutated_score - current_score) / temperature)
+                if random.random() < acceptance_probability:
+                    accept = True
+                    print(f"DEBUG: Accepting worse score with probability: {mutated_score:.2f} < {current_score:.2f}")
+            
+            if accept:
+                current_layout = mutated_layout
+                current_score = mutated_score
                 
-                # Update best solution
-                if new_score > best_score:
-                    best_layout = new_layout.copy()
-                    best_score = new_score
+                # Update best solution if this is better
+                if current_score > best_score:
+                    best_layout = current_layout.copy()
+                    best_score = current_score
                     no_improvement_count = 0
-                    print(f"Iteration {iteration}: New best score: {best_score:.2f}")
+                    print(f"DEBUG: New best score: {best_score:.2f}")
                 else:
                     no_improvement_count += 1
             else:
                 no_improvement_count += 1
             
             # Cool down temperature
-            temperature *= self.config['algorithm']['cooling_rate']
+            temperature *= cooling_rate
             
-            # Early stopping if no improvement
-            if no_improvement_count >= self.config['algorithm']['max_no_improvement']:
-                print(f"Stopping early after {iteration} iterations (no improvement)")
+            # Early stopping if no improvement for too long
+            if no_improvement_count >= max_no_improvement:
+                print(f"DEBUG: No improvement for {max_no_improvement} iterations, stopping early")
                 break
+            
+            if iteration % 20 == 0:
+                print(f"DEBUG: Iteration {iteration}, current score: {current_score:.2f}, best score: {best_score:.2f}, temperature: {temperature:.2f}")
         
-        # Ensure we return all objects
+        # Final validation and cleanup
         if len(best_layout) != len(objects_to_place):
             print(f"WARNING: Best layout has {len(best_layout)} objects, expected {len(objects_to_place)}")
             print(f"DEBUG: Best layout objects: {[p['type'] for p in best_layout]}")

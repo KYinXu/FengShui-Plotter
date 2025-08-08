@@ -9,15 +9,15 @@ import 'package:flutter/services.dart';
 import 'grid_helpers.dart';
 import 'grid_painters.dart';
 import '../../services/boundary_placer_service.dart';
+import '../feng_shui_score_bar.dart';
 
 class GridWidget extends StatefulWidget {
   final Grid grid;
-
-
   final void Function(int row, int col, String type, IconData icon, [int rotation])? onObjectDropped;
   final String boundaryMode; // 'none', 'door', 'window'
   final void Function(GridBoundary boundary)? onAddBoundary;
   final void Function(GridBoundary boundary)? onRemoveBoundary;
+  final double? fengShuiScore; // New parameter for Feng Shui score
 
   const GridWidget({
     super.key,
@@ -26,6 +26,7 @@ class GridWidget extends StatefulWidget {
     this.boundaryMode = 'none',
     this.onAddBoundary,
     this.onRemoveBoundary,
+    this.fengShuiScore, // Add to constructor
   });
 
   @override
@@ -565,47 +566,60 @@ class GridWidgetState extends State<GridWidget> {
 
         // Wrap in RawKeyboardListener only (no Focus)
         return Center(
-          child: KeyboardListener(
-            focusNode: _focusNode,
-            autofocus: true,
-            onKeyEvent: (event) {
-              if (event is KeyDownEvent && event.logicalKey.keyLabel.toLowerCase() == 'r') {
-                setState(() {
-                  _dragRotation = (_dragRotation + 90) % 360;
-                });
-                // Check if preview is blocked after rotation
-                if (_lastPreviewData != null) {
-                  final type = _lastPreviewData!['type'];
-                  final gridW = widget.grid.widthInches.floor();
-                  final gridH = widget.grid.lengthInches.floor();
-                  final dims = ObjectItem.getObjectDimensions(type);
-                  final objW = dims['width'] ?? 1;
-                  final objH = dims['height'] ?? 1;
-                  if (objW > gridW || objH > gridH) {
-                    // Rotation blocked: object too large for grid after rotation
-                  } else {
-                    // Rotated object to ${_dragRotation} degrees
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              // Grid widget
+              KeyboardListener(
+                focusNode: _focusNode,
+                autofocus: true,
+                onKeyEvent: (event) {
+                  if (event is KeyDownEvent && event.logicalKey.keyLabel.toLowerCase() == 'r') {
+                    setState(() {
+                      _dragRotation = (_dragRotation + 90) % 360;
+                    });
+                    // Check if preview is blocked after rotation
+                    if (_lastPreviewData != null) {
+                      final type = _lastPreviewData!['type'];
+                      final gridW = widget.grid.widthInches.floor();
+                      final gridH = widget.grid.lengthInches.floor();
+                      final dims = ObjectItem.getObjectDimensions(type);
+                      final objW = dims['width'] ?? 1;
+                      final objH = dims['height'] ?? 1;
+                      if (objW > gridW || objH > gridH) {
+                        // Rotation blocked: object too large for grid after rotation
+                      } else {
+                        // Rotated object to ${_dragRotation} degrees
+                      }
+                    } else {
+                      // Rotated object to ${_dragRotation} degrees
+                    }
+                    // If there is a preview in progress, re-trigger preview snapping after rotation
+                    if (_lastPreviewData != null && _lastPreviewPointerOffset != null &&
+                        _lastPreviewOffsetX != null && _lastPreviewOffsetY != null &&
+                        _lastPreviewGridWidth != null && _lastPreviewGridHeightPx != null && _lastPreviewCellInchSize != null) {
+                      _handlePreviewMove(
+                        _lastPreviewData!,
+                        _lastPreviewPointerOffset!,
+                        _lastPreviewOffsetX!,
+                        _lastPreviewOffsetY!,
+                        _lastPreviewGridWidth!,
+                        _lastPreviewGridHeightPx!,
+                        _lastPreviewCellInchSize!
+                      );
+                    }
                   }
-                } else {
-                  // Rotated object to ${_dragRotation} degrees
-                }
-                // If there is a preview in progress, re-trigger preview snapping after rotation
-                if (_lastPreviewData != null && _lastPreviewPointerOffset != null &&
-                    _lastPreviewOffsetX != null && _lastPreviewOffsetY != null &&
-                    _lastPreviewGridWidth != null && _lastPreviewGridHeightPx != null && _lastPreviewCellInchSize != null) {
-                  _handlePreviewMove(
-                    _lastPreviewData!,
-                    _lastPreviewPointerOffset!,
-                    _lastPreviewOffsetX!,
-                    _lastPreviewOffsetY!,
-                    _lastPreviewGridWidth!,
-                    _lastPreviewGridHeightPx!,
-                    _lastPreviewCellInchSize!
-                  );
-                }
-              }
-            },
-            child: gridWidget,
+                },
+                child: gridWidget,
+              ),
+              
+              // Vertical Feng Shui Score Bar
+              const SizedBox(width: 8),
+              FengShuiScoreBar(
+                score: widget.fengShuiScore,
+                maxScore: 100.0,
+              ),
+            ],
           ),
         );
       },
