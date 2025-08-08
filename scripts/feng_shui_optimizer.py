@@ -1,5 +1,6 @@
 import random
 import math
+import time
 from typing import List, Dict, Tuple, Optional
 from helpers import (
     is_position_valid,
@@ -91,7 +92,8 @@ class FengShuiOptimizer:
                 'corner_placement_bonus': 100.0,  # Extra bonus for corner placement
                 'door_blocked': 2000.0,           # Extremely harsh penalty for blocked doors
                 'furniture_overlap': 3000.0,      # Extremely harsh penalty for overlapping furniture
-                'door_furniture_gap': 150.0       # Penalty for small gaps between doors and furniture
+                'door_furniture_gap': 150.0,      # Penalty for small gaps between doors and furniture
+                'door_window_overlap': 2500.0     # Extremely harsh penalty for overlapping doors and windows
             },
             
             # Algorithm parameters
@@ -417,6 +419,19 @@ class FengShuiOptimizer:
                     penalty_score -= penalty_weight
                     print(f"DEBUG: Door-furniture gap penalty - {furniture_type} too close to door, distance: {door_furniture_distance:.2f}")
         
+        # Penalty 7: Overlapping doors and windows (should have separation)
+        if door_placement and window_placement:
+            door_x, door_y = door_placement['x'], door_placement['y']
+            window_x, window_y = window_placement['x'], window_placement['y']
+            
+            # Calculate distance between door and window
+            door_window_distance = math.sqrt((door_x - window_x)**2 + (door_y - window_y)**2)
+            
+            if door_window_distance < 6: # Door and window too close
+                penalty_weight = self.config['feng_shui_penalties']['door_window_overlap']
+                penalty_score -= penalty_weight
+                print(f"DEBUG: Door-window overlap penalty - distance: {door_window_distance:.2f}")
+        
         return penalty_score
 
     def _check_door_blocked(self, placements: List[Dict]) -> float:
@@ -452,6 +467,36 @@ class FengShuiOptimizer:
                     penalty_weight = self.config['feng_shui_penalties']['door_blocked']
                     penalty_score -= penalty_weight
                     print(f"DEBUG: Door blocked by {furniture_type} at ({furniture_x}, {furniture_y})")
+                    
+                    # Additional penalty for desks blocking doors (more severe)
+                    if furniture_type == 'desk':
+                        penalty_score -= 500.0  # Extra penalty for desk blocking door
+                        print(f"DEBUG: Extra penalty for desk blocking door")
+        
+        return penalty_score
+
+    def _check_door_window_overlap(self, placements: List[Dict]) -> float:
+        """
+        Check for overlapping doors and windows and return penalty.
+        """
+        penalty_score = 0.0
+        
+        door_placements = [p for p in placements if p['type'] == 'door']
+        window_placements = [p for p in placements if p['type'] == 'window']
+        
+        for door_placement in door_placements:
+            door_x, door_y = door_placement['x'], door_placement['y']
+            
+            for window_placement in window_placements:
+                window_x, window_y = window_placement['x'], window_placement['y']
+                
+                # Check if door and window overlap or are too close
+                door_window_distance = math.sqrt((door_x - window_x)**2 + (door_y - window_y)**2)
+                
+                if door_window_distance < 3:  # Door and window too close or overlapping
+                    penalty_weight = self.config['feng_shui_penalties']['door_window_overlap']
+                    penalty_score -= penalty_weight
+                    print(f"DEBUG: Door-window overlap penalty - distance: {door_window_distance:.2f}")
         
         return penalty_score
 
@@ -523,7 +568,8 @@ class FengShuiOptimizer:
         # Apply extremely harsh penalties for fundamental violations
         door_blocked_penalty = self._check_door_blocked(placements)
         furniture_overlap_penalty = self._check_furniture_overlap(placements)
-        total_score += door_blocked_penalty + furniture_overlap_penalty
+        door_window_overlap_penalty = self._check_door_window_overlap(placements)
+        total_score += door_blocked_penalty + furniture_overlap_penalty + door_window_overlap_penalty
         
         return total_score
     
@@ -583,6 +629,23 @@ class FengShuiOptimizer:
                     print(f"DEBUG: Door blocked by {furniture_type}")
                     door_blocked_penalty = self.config['feng_shui_penalties']['door_blocked']
                     score -= door_blocked_penalty
+                    return score
+        
+        # Check for overlapping doors and windows - use new harsh penalty
+        window_placements = [p for p in placements if p['type'] == 'window']
+        for door_placement in door_placements:
+            door_x, door_y = door_placement['x'], door_placement['y']
+            
+            for window_placement in window_placements:
+                window_x, window_y = window_placement['x'], window_placement['y']
+                
+                # Check if door and window overlap or are too close
+                door_window_distance = math.sqrt((door_x - window_x)**2 + (door_y - window_y)**2)
+                
+                if door_window_distance < 3:  # Door and window too close or overlapping
+                    print(f"DEBUG: Door and window overlap - distance: {door_window_distance:.2f}")
+                    door_window_overlap_penalty = self.config['feng_shui_penalties']['door_window_overlap']
+                    score -= door_window_overlap_penalty
                     return score
         
         return score
@@ -793,7 +856,13 @@ class FengShuiOptimizer:
         max_fallback_attempts = 3
         original_objects = objects_to_place.copy()
         
+        start_time = time.time()
         for iteration in range(max_iterations):
+            # Check for timeout
+            if time.time() - start_time > 20: # 20 seconds timeout
+                print(f"DEBUG: Optimization timed out after {time.time() - start_time:.2f} seconds.")
+                break
+
             # Generate a valid mutated version of the current layout
             mutated_layout = self._generate_valid_mutation(current_layout, objects_to_place)
             
